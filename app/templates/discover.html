@@ -1,21 +1,170 @@
 {% extends "base_app.html" %}
-{% block title %}CineMatch - Discover{% endblock %}
+{% block title %}CineMatch - Recommendations{% endblock %}
+{% block head_extra %}
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .material-symbols-outlined.fill-icon {
+            font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        input[type="number"]::-webkit-inner-spin-button,
+        input[type="number"]::-webkit-outer-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+        select option {
+            background-color: #201f1f;
+            color: #e5e2e1;
+            padding: 12px;
+        }
+    </style>
+{% endblock %}
 {% block app_content %}
-<main class="max-w-[1440px] mx-auto px-[5%] py-lg flex-1 w-full">
+<main class="max-w-[1440px] mx-auto px-[5%] py-lg flex-1 w-full relative z-10">
+<div class="absolute top-0 left-1/2 -translate-x-1/2 w-3/4 max-w-[720px] h-64 bg-primary-container/10 blur-[100px] rounded-full pointer-events-none z-[-1]"></div>
+
+<section id="discover-preferences" class="scroll-mt-28 mb-xl w-full max-w-4xl mx-auto">
+<div class="bg-surface-container-low/60 backdrop-blur-[20px] border border-surface-variant rounded-xl p-lg md:p-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)]">
+<header class="mb-lg text-center md:text-left">
+<div class="flex flex-wrap items-center gap-sm mb-sm">
+<span class="inline-flex items-center px-sm py-xs rounded-full bg-primary-container/15 text-primary-container font-label-bold text-[10px] uppercase tracking-wider border border-primary-container/30">Step 1</span>
+</div>
+<h2 class="font-display-lg text-display-lg text-on-surface mb-sm">Your preferences</h2>
+<p class="font-body-lg text-body-lg text-on-surface-variant">Age, gender, and genres feed the personalization layer. Save here first, then move to Precision match for your anchor film.</p>
+</header>
+<form id="preferences-form" class="flex flex-col gap-xl">
+<section class="grid grid-cols-1 md:grid-cols-2 gap-md">
+<div class="flex flex-col gap-sm bg-surface-container p-md rounded-lg border border-transparent focus-within:border-primary-container transition-colors relative">
+<label class="font-label-bold text-label-bold text-on-surface-variant uppercase tracking-wider text-[10px]" for="age">Viewer Age</label>
+<input class="bg-transparent border-none outline-none font-body-lg text-body-lg text-on-surface p-0 placeholder:text-surface-variant focus:ring-0 w-full" id="age" max="120" min="13" name="age" placeholder="e.g. 28" type="number"/>
+<div class="absolute bottom-0 left-0 w-full h-[2px] bg-primary-container scale-x-0 origin-left transition-transform duration-300" style="transition-property: transform;"></div>
+</div>
+<div class="flex flex-col gap-sm bg-surface-container p-md rounded-lg border border-transparent focus-within:border-primary-container transition-colors relative">
+<label class="font-label-bold text-label-bold text-on-surface-variant uppercase tracking-wider text-[10px]" for="gender">Gender Identity</label>
+<select class="bg-transparent border-none outline-none font-body-lg text-body-lg text-on-surface p-0 focus:ring-0 w-full cursor-pointer appearance-none" id="gender" name="gender">
+<option class="bg-surface-container text-on-surface-variant" disabled="" selected="" value="">Select identity...</option>
+<option class="bg-surface-container text-on-surface" value="female">Female</option>
+<option class="bg-surface-container text-on-surface" value="male">Male</option>
+<option class="bg-surface-container text-on-surface" value="nonbinary">Non-binary</option>
+<option class="bg-surface-container text-on-surface" value="prefer_not">Prefer not to say</option>
+</select>
+<span class="material-symbols-outlined absolute right-md top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none">expand_more</span>
+</div>
+</section>
+<hr class="border-surface-variant border-t-2 opacity-50"/>
+<section class="flex flex-col gap-md">
+<div class="flex items-center justify-between">
+<h3 class="font-headline-md text-headline-md text-on-surface">Cinematic palette</h3>
+<span class="font-label-sm text-label-sm text-on-surface-variant">Select 3 or more</span>
+</div>
+<div id="genre-container" class="flex flex-wrap gap-sm"></div>
+</section>
+<div class="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-sm">
+<button class="w-full sm:w-auto px-xxl py-md bg-primary-container text-white font-label-bold text-label-bold rounded-lg hover:bg-inverse-primary transition-colors shadow-[0_4px_20px_rgba(229,9,20,0.3)] hover:shadow-[0_4px_25px_rgba(229,9,20,0.5)] flex justify-center items-center gap-sm order-1 sm:order-2" type="submit">
+                        Save &amp; go to step 2
+                        <span class="material-symbols-outlined">arrow_forward</span>
+</button>
+</div>
+</form>
+</div>
+</section>
+
+<section id="discover-precision" class="scroll-mt-28 mb-xl w-full max-w-4xl mx-auto">
+<div id="discover-precision-gate" class="mb-lg">
+<div class="bg-surface-container-low/60 backdrop-blur-[20px] border border-surface-variant rounded-xl p-lg md:p-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] text-center md:text-left">
+<span class="material-symbols-outlined text-primary-container text-4xl mb-sm">lock</span>
+<p class="font-headline-md text-headline-md text-on-surface mb-sm">Precision match is locked</p>
+<p class="font-body-md text-body-md text-on-surface-variant max-w-2xl mx-auto md:mx-0">Save <span class="font-label-bold text-on-surface">Step 1 · Preferences</span> above (at least <span class="font-label-bold text-on-surface">3 genres</span> recommended). Your hybrid scores use that profile plus the anchor you pick here.</p>
+<button type="button" id="cm-gate-to-step1" class="mt-md px-xxl py-md rounded-full border border-surface-variant text-on-surface font-label-bold text-label-bold hover:bg-surface-container-high transition-colors">Back to step 1</button>
+</div>
+</div>
+<div id="discover-precision-active" class="hidden">
+<div class="mb-lg text-center md:text-left">
+<div class="flex flex-wrap items-center gap-sm mb-sm">
+<span class="inline-flex items-center px-sm py-xs rounded-full bg-surface-container-high text-on-surface font-label-bold text-[10px] uppercase tracking-wider border border-surface-variant">Step 2</span>
+</div>
+<h2 class="font-display-lg text-display-lg text-on-surface mb-sm">Precision match</h2>
+<p class="font-body-lg text-body-lg text-on-surface-variant">Pick one anchor film, optionally narrow by era and minimum average rating, then load recommendations into the grid below. Search includes TMDb; scoring uses the MovieLens-backed library together with step 1.</p>
+</div>
+<form class="space-y-xl max-w-4xl mx-auto" onsubmit="return false">
+<section class="relative group" id="search-section">
+<div class="absolute inset-y-0 left-0 pl-lg flex items-center pointer-events-none">
+<span class="material-symbols-outlined text-outline-variant group-focus-within:text-primary-container transition-colors">search</span>
+</div>
+<input id="movie-search" class="w-full bg-surface-container-high border-b-2 border-outline-variant text-on-surface font-body-lg px-xl py-lg pl-xxl focus:outline-none focus:border-primary-container focus:bg-surface-container-highest transition-all placeholder:text-outline-variant shadow-inner rounded-t-xl" placeholder="Search titles (US catalog + TMDb)…" type="text" autocomplete="off"/>
+</section>
+<p id="anchor-hint" class="hidden font-label-sm text-label-sm text-primary-container mt-sm">Anchor: <span id="anchor-title" class="font-label-bold"></span></p>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-gutter">
+<section class="bg-surface-container rounded-xl p-lg border border-surface-container-high flex flex-col gap-md">
+<header class="flex items-center gap-sm">
+<span class="material-symbols-outlined text-primary-container">history</span>
+<h3 class="font-headline-md text-headline-md">Cinematic era</h3>
+</header>
+<p class="font-label-sm text-label-sm text-on-surface-variant mb-sm">Select eras to narrow recommendations (empty = all eras).</p>
+<div class="grid grid-cols-2 gap-unit">
+<label class="cursor-pointer relative">
+<input class="peer sr-only" name="era" type="checkbox" value="classic"/>
+<div class="bg-surface-container-lowest border border-surface-container-high p-md rounded-lg text-center font-label-bold text-label-bold text-on-surface-variant peer-checked:border-primary-container peer-checked:bg-primary-container/10 peer-checked:text-white transition-all hover:border-outline-variant">Classic (&lt; '80s)</div>
+</label>
+<label class="cursor-pointer relative">
+<input class="peer sr-only" name="era" type="checkbox" value="80s"/>
+<div class="bg-surface-container-lowest border border-surface-container-high p-md rounded-lg text-center font-label-bold text-label-bold text-on-surface-variant peer-checked:border-primary-container peer-checked:bg-primary-container/10 peer-checked:text-white transition-all hover:border-outline-variant">The 80s</div>
+</label>
+<label class="cursor-pointer relative">
+<input class="peer sr-only" name="era" type="checkbox" value="90s"/>
+<div class="bg-surface-container-lowest border border-surface-container-high p-md rounded-lg text-center font-label-bold text-label-bold text-on-surface-variant peer-checked:border-primary-container peer-checked:bg-primary-container/10 peer-checked:text-white transition-all hover:border-outline-variant">The 90s</div>
+</label>
+<label class="cursor-pointer relative">
+<input class="peer sr-only" name="era" type="checkbox" value="00s"/>
+<div class="bg-surface-container-lowest border border-surface-container-high p-md rounded-lg text-center font-label-bold text-label-bold text-on-surface-variant peer-checked:border-primary-container peer-checked:bg-primary-container/10 peer-checked:text-white transition-all hover:border-outline-variant">The 00s</div>
+</label>
+<label class="cursor-pointer relative col-span-2">
+<input class="peer sr-only" name="era" type="checkbox" value="modern"/>
+<div class="bg-surface-container-lowest border border-surface-container-high p-md rounded-lg text-center font-label-bold text-label-bold text-on-surface-variant peer-checked:border-primary-container peer-checked:bg-primary-container/10 peer-checked:text-white transition-all hover:border-outline-variant">Modern (2010s - Present)</div>
+</label>
+</div>
+</section>
+<section class="bg-surface-container/50 backdrop-blur-xl rounded-xl p-lg border border-surface-container-high flex flex-col gap-md relative overflow-hidden">
+<div class="absolute -bottom-10 -right-10 text-9xl opacity-5 pointer-events-none">
+<span class="material-symbols-outlined fill-icon">star</span>
+</div>
+<header class="flex items-center gap-sm relative z-10">
+<span class="material-symbols-outlined text-primary-container fill-icon">star</span>
+<h3 class="font-headline-md text-headline-md">Minimum rating</h3>
+</header>
+<p class="font-label-sm text-label-sm text-on-surface-variant mb-sm relative z-10">Use average MovieLens (1–5) rating in the dataset. Titles with no ratings are not filtered out.</p>
+<div class="flex flex-col gap-sm relative z-10">
+<label for="min-rating-range" id="min-rating-label" class="font-label-bold text-label-bold text-on-surface">Any average</label>
+<input type="range" id="min-rating-range" min="0" max="50" step="1" value="0" class="w-full h-2 bg-surface-container-highest rounded-lg appearance-none cursor-pointer accent-primary-container" aria-valuemin="0" aria-valuemax="5" aria-describedby="min-rating-hint"/>
+<p id="min-rating-hint" class="font-label-sm text-label-sm text-on-surface-variant">0 = any · 30 = 3.0+ · 40 = 4.0+</p>
+</div>
+</section>
+</div>
+<div class="flex items-start gap-sm rounded-xl border border-surface-container-high bg-surface-container-low/40 p-md">
+<input type="checkbox" id="include-regional-indian" class="mt-1 h-4 w-4 rounded border-surface-variant text-primary-container focus:ring-primary-container" checked/>
+<label for="include-regional-indian" class="font-body-sm text-body-sm text-on-surface cursor-pointer">
+<span class="font-label-bold text-label-bold">Indian regional cinema</span>
+<span class="text-on-surface-variant"> — When on: blend hi/te/ta TMDb discovers <em>and</em> allow the newest imported catalog rows in the &ldquo;Newer in catalog&rdquo; slots. When off: hybrid + MovieLens-only newer titles only (no fresh TMDb supplement fillers).</span>
+</label>
+</div>
+<div class="pt-lg flex justify-end">
+<button id="apply-filters-btn" class="w-full md:w-auto bg-primary-container text-on-primary-container font-label-bold text-label-bold px-xxl py-md rounded-full hover:bg-inverse-primary hover:shadow-[0_0_20px_rgba(229,9,20,0.4)] transition-all duration-300 flex items-center justify-center gap-sm group" type="button">
+<span class="material-symbols-outlined group-hover:rotate-12 transition-transform">filter_list</span>
+                    Get recommendations
+                </button>
+</div>
+</form>
+</div>
+</section>
+
+<div id="discover-results-anchor" class="scroll-mt-28">
 <div class="mb-xl flex flex-col gap-sm">
-<h1 id="discover-heading" class="font-headline-lg text-headline-lg text-on-surface">Discover</h1>
+<h1 id="discover-heading" class="font-headline-lg text-headline-lg text-on-surface">Recommendations</h1>
 <p id="discover-subtitle" class="font-body-md text-body-md text-on-surface-variant">Loading…</p>
 <p id="discover-hint-line" class="hidden font-body-sm text-on-surface-variant max-w-3xl border-l-2 border-tertiary/50 pl-md py-xs"></p>
 </div>
-<div id="discover-workflow" class="mb-lg rounded-xl border border-surface-variant/50 bg-surface-container-low/40 p-md md:p-lg flex flex-col md:flex-row md:items-center md:justify-between gap-md">
-<p id="discover-workflow-text" class="font-body-md text-body-md text-on-surface-variant max-w-3xl"></p>
-<div class="flex flex-wrap items-center gap-sm shrink-0">
-<a id="discover-workflow-primary" href="/filters" class="inline-flex items-center justify-center gap-sm px-xxl py-md rounded-full bg-primary-container text-on-primary-container font-label-bold text-label-bold hover:bg-inverse-primary hover:shadow-[0_0_20px_rgba(229,9,20,0.35)] transition-all">Precision match</a>
-<a id="discover-workflow-secondary" href="/preferences" class="hidden inline-flex items-center justify-center gap-sm px-lg py-md rounded-full border border-surface-variant text-on-surface font-label-bold text-label-sm hover:bg-surface-container-high transition-colors">Tune preferences</a>
-<a id="discover-workflow-tertiary" href="/discover?feed=trending" class="hidden font-label-bold text-label-sm text-primary-container hover:underline">Show trending catalog</a>
-</div>
-</div>
-<h2 id="library-catalog-heading" class="font-headline-md text-headline-md text-on-surface mb-sm">Library catalog (trending)</h2>
+<h2 id="library-catalog-heading" class="font-headline-md text-headline-md text-on-surface mb-sm">Recommended for you</h2>
 <div id="discover-chips" class="flex gap-sm overflow-x-auto pb-sm mb-lg no-scrollbar" role="tablist" aria-label="Filter by category">
 <button type="button" role="tab" aria-selected="true" data-cm-disc-filter="all" class="cm-disc-chip px-md py-sm bg-primary-container text-on-primary-container rounded-full font-label-bold text-label-bold whitespace-nowrap border border-primary-container">All</button>
 <button type="button" role="tab" aria-selected="false" data-cm-disc-filter="action" class="cm-disc-chip px-md py-sm bg-surface-container text-on-surface rounded-full font-label-bold text-label-bold whitespace-nowrap hover:bg-surface-variant transition-colors border border-outline-variant">Action &amp; Adventure</button>
@@ -25,62 +174,177 @@
 </div>
 <div id="movie-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-gutter">
 </div>
-<section class="mt-xl mb-xl" id="modern-tmdb-block" aria-labelledby="modern-tmdb-h2">
-<h2 id="modern-tmdb-h2" class="font-headline-md text-headline-md text-on-surface mb-xs">2000 to present (TMDb)</h2>
-<p class="font-body-sm text-on-surface-variant mb-md">Same strip for every visitor—<span class="text-on-surface font-label-bold">not</span> from your anchor. Use the grid <span class="whitespace-nowrap">above</span> for Precision match results. <span class="text-on-surface font-label-bold">In CineMatch</span> opens the app; <span class="text-on-surface font-label-bold">TMDb</span> opens The Movie Database.</p>
-<div id="modern-tmdb-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-gutter min-h-[80px]">
 </div>
-<div class="mt-md flex justify-center hidden" id="modern-tmdb-more-wrap">
-<button type="button" id="modern-tmdb-more" class="px-xl py-md rounded-lg border border-surface-variant text-on-surface font-label-bold hover:bg-surface-container-high transition-colors">Load more</button>
-</div>
-</section>
 </main>
 {% endblock %}
 {% block scripts %}
 <script>
 (function () {
+  const HASH_PREFS = 'discover-preferences';
+  const HASH_PRECISION = 'discover-precision';
+
   const CHIP_ACTIVE = 'px-md py-sm bg-primary-container text-on-primary-container rounded-full font-label-bold text-label-bold whitespace-nowrap border border-primary-container';
   const CHIP_IDLE = 'px-md py-sm bg-surface-container text-on-surface rounded-full font-label-bold text-label-bold whitespace-nowrap hover:bg-surface-variant transition-colors border border-outline-variant';
 
+  const ALL_GENRES = [
+    "Action", "Adventure", "Animation", "Children's", "Comedy",
+    "Crime", "Documentary", "Drama", "Fantasy", "Film-Noir",
+    "Horror", "Musical", "Mystery", "Romance", "Sci-Fi",
+    "Thriller", "War", "Western"
+  ];
+  let selectedGenres = new Set();
+
   let allMovies = [];
   let currentFilter = 'all';
-  const modernState = { page: 1, totalPages: 1 };
 
-  async function loadModernTmdb(append) {
-    const grid = document.getElementById('modern-tmdb-grid');
-    const moreWrap = document.getElementById('modern-tmdb-more-wrap');
-    if (!grid) return;
-    if (!append) {
-      grid.innerHTML = '<p class="text-on-surface-variant col-span-full">Loading TMDb picks…</p>';
-      modernState.page = 1;
+  let anchorMovie = null;
+  const LS_ANCHOR = 'cm_last_anchor';
+  const LS_PREFS_SAVED = 'cm_prefs_saved_once';
+  let precisionUnlocked = false;
+
+  function bootstrapUnlockFromServer(prefsData) {
+    const genres = (prefsData && prefsData.preferred_genres) || [];
+    if (Array.isArray(genres) && genres.length >= 3) {
+      precisionUnlocked = true;
+      try {
+        localStorage.setItem(LS_PREFS_SAVED, '1');
+      } catch (e) { /* ignore */ }
     }
-    const r = await apiFetch('/api/movies/modern-tmdb?page=' + modernState.page);
-    if (!r.ok) {
-      grid.innerHTML = '<p class="text-error col-span-full">' + (await parseApiError(r, 'Could not load modern discover')) + '</p>';
-      if (moreWrap) moreWrap.classList.add('hidden');
-      return;
-    }
-    const j = await r.json();
-    const list = j.results || [];
-    if (j.message && !list.length) {
-      grid.innerHTML = '<p class="text-on-surface-variant col-span-full">' + j.message + '</p>';
-      if (moreWrap) moreWrap.classList.add('hidden');
-      return;
-    }
-    modernState.totalPages = j.total_pages || 1;
-    const cards = list.map((x) => buildTmdbRelatedCard(x)).join('');
-    if (append) {
-      grid.insertAdjacentHTML('beforeend', cards);
+  }
+
+  function updateWizardChrome() {
+    const gate = document.getElementById('discover-precision-gate');
+    const active = document.getElementById('discover-precision-active');
+    if (!gate || !active) return;
+    if (precisionUnlocked) {
+      gate.classList.add('hidden');
+      active.classList.remove('hidden');
     } else {
-      grid.innerHTML = cards;
+      gate.classList.remove('hidden');
+      active.classList.add('hidden');
     }
-    if (moreWrap) {
-      if (modernState.page < modernState.totalPages) {
-        moreWrap.classList.remove('hidden');
-      } else {
-        moreWrap.classList.add('hidden');
+  }
+
+  function scrollToHash() {
+    const h = (window.location.hash || '').replace(/^#/, '');
+    if (h === HASH_PRECISION && !precisionUnlocked) {
+      showToast('Save step 1 preferences first (3+ genres).', 'info');
+      const p = document.getElementById(HASH_PREFS);
+      if (p) p.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
+    if (h === HASH_PREFS || h === HASH_PRECISION) {
+      const el = document.getElementById(h);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }
+
+  function persistAnchor(m) {
+    if (!m || m.movie_id == null) return;
+    try {
+      localStorage.setItem(LS_ANCHOR, JSON.stringify({
+        movie_id: m.movie_id,
+        title: m.title || '',
+        year: m.year != null ? m.year : null
+      }));
+    } catch (e) { /* ignore quota */ }
+  }
+
+  async function restoreAnchorFromUrlOrStorage() {
+    const searchInput = document.getElementById('movie-search');
+    const anchorHint = document.getElementById('anchor-hint');
+    const anchorTitle = document.getElementById('anchor-title');
+    if (!searchInput) return;
+
+    const params = new URLSearchParams(window.location.search);
+    const fromQuery = params.get('anchor');
+    let movieId = null;
+    if (fromQuery != null && fromQuery !== '') {
+      const n = parseInt(fromQuery, 10);
+      if (!Number.isNaN(n) && n > 0) movieId = n;
+    }
+    if (movieId == null) {
+      try {
+        const raw = localStorage.getItem(LS_ANCHOR);
+        if (raw) {
+          const o = JSON.parse(raw);
+          if (o && o.movie_id != null) {
+            const n = parseInt(o.movie_id, 10);
+            if (!Number.isNaN(n) && n > 0) movieId = n;
+          }
+        }
+      } catch (e) { /* ignore */ }
+    }
+    if (movieId == null) return;
+    try {
+      const res = await apiFetch('/api/movies/' + movieId);
+      if (!res.ok) return;
+      const movie = await res.json();
+      anchorMovie = {
+        movie_id: movieId,
+        title: movie.title,
+        year: movie.year,
+        in_catalog: true
+      };
+      searchInput.value = movie.title || '';
+      anchorTitle.textContent = (movie.title || '') + (movie.year ? ' (' + movie.year + ')' : '');
+      anchorHint.classList.remove('hidden');
+      persistAnchor(anchorMovie);
+      if (fromQuery != null && fromQuery !== '') {
+        window.history.replaceState({}, '', '/discover');
       }
+    } catch (_) { /* anchor restore is best-effort */ }
+  }
+
+  function renderPreferenceGenreChips() {
+    const container = document.getElementById('genre-container');
+    if (!container) return;
+    container.innerHTML = '';
+    ALL_GENRES.forEach(g => {
+      const isActive = selectedGenres.has(g);
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      if (isActive) {
+        btn.className = 'px-md py-sm rounded-full bg-primary-container text-white font-label-bold text-label-bold cursor-pointer hover:bg-inverse-primary transition-all shadow-[0_0_15px_rgba(229,9,20,0.4)] border border-primary-container flex items-center gap-xs';
+        btn.innerHTML = g + ' <span class="material-symbols-outlined text-[14px]">check</span>';
+      } else {
+        btn.className = 'px-md py-sm rounded-full bg-surface-container-high text-on-surface font-label-bold text-label-bold cursor-pointer hover:bg-surface-variant hover:text-white transition-colors border border-surface-variant hover:border-surface-bright';
+        btn.textContent = g;
+      }
+      btn.addEventListener('click', () => {
+        if (selectedGenres.has(g)) selectedGenres.delete(g);
+        else selectedGenres.add(g);
+        renderPreferenceGenreChips();
+      });
+      container.appendChild(btn);
+    });
+  }
+
+  async function loadPreferencesForm() {
+    const res = await apiFetch('/api/preferences');
+    if (!res.ok) return null;
+    const data = await res.json();
+    const ageEl = document.getElementById('age');
+    if (ageEl && data.age) ageEl.value = data.age;
+    if (data.gender) {
+      let gVal = data.gender;
+      if (gVal === 'M') gVal = 'male';
+      if (gVal === 'F') gVal = 'female';
+      const ge = document.getElementById('gender');
+      if (ge) ge.value = gVal;
     }
+    selectedGenres.clear();
+    (data.preferred_genres || []).forEach(g => selectedGenres.add(g));
+    renderPreferenceGenreChips();
+    bootstrapUnlockFromServer(data);
+    if (!precisionUnlocked) {
+      try {
+        if (localStorage.getItem(LS_PREFS_SAVED) === '1' && (data.preferred_genres || []).length >= 3) {
+          precisionUnlocked = true;
+        }
+      } catch (e) { /* ignore */ }
+    }
+    return data;
   }
 
   function setChipState(key) {
@@ -96,66 +360,77 @@
     const grid = document.getElementById('movie-grid');
     const list = filterDiscoverMovies(allMovies, currentFilter);
     if (!list.length) {
-      grid.innerHTML = '<p class="text-on-surface-variant col-span-full">No movies match this filter. Try <strong>All</strong> or another category, or run <a href="/filters" class="text-primary-container font-label-bold hover:underline">Precision match</a> for a fresh list.</p>';
+      grid.innerHTML = '<p class="text-on-surface-variant col-span-full">No movies match this filter. Try <strong>All</strong> or another category, or run <a href="#' + HASH_PRECISION + '" class="text-primary-container font-label-bold hover:underline">Precision match</a> for a fresh list.</p>';
       return;
     }
     grid.innerHTML = list.map((m) => buildMovieCard(m)).join('');
   }
 
-  function setWorkflowTrending() {
-    const text = document.getElementById('discover-workflow-text');
-    const primary = document.getElementById('discover-workflow-primary');
-    const secondary = document.getElementById('discover-workflow-secondary');
-    const tertiary = document.getElementById('discover-workflow-tertiary');
-    if (text) {
-      text.textContent = 'Start with the library grid and chips (ml-1m trending). TMDb 2000+ is at the bottom—global, not personalized. Your anchor-based lists come from Precision match.';
-    }
-    if (primary) {
-      primary.textContent = 'Precision match';
-      primary.href = '/filters';
-    }
-    if (secondary) {
-      secondary.textContent = 'Tune preferences';
-      secondary.classList.remove('hidden');
-    }
-    if (tertiary) tertiary.classList.add('hidden');
-  }
+  function applyRecommendationsToGrid(movies, anchorTitle, recMeta, scrollToResults) {
+    const grid = document.getElementById('movie-grid');
+    const libHead = document.getElementById('library-catalog-heading');
+    const heading = document.getElementById('discover-heading');
+    const subtitle = document.getElementById('discover-subtitle');
+    const hintLine = document.getElementById('discover-hint-line');
 
-  function setWorkflowPersonalized() {
-    const text = document.getElementById('discover-workflow-text');
-    const primary = document.getElementById('discover-workflow-primary');
-    const secondary = document.getElementById('discover-workflow-secondary');
-    const tertiary = document.getElementById('discover-workflow-tertiary');
-    if (text) {
-      text.textContent = 'The first grid (below) is from your last Precision match—chips only filter that grid. The TMDb 2000+ block at the bottom is the same for everyone, not your anchor.';
+    allMovies = Array.isArray(movies) ? movies : [];
+    if (libHead) libHead.textContent = 'Recommended for you';
+    if (heading) heading.textContent = 'Your matches';
+    if (subtitle) {
+      const base = anchorTitle
+        ? 'Based on \u201c' + anchorTitle + '\u201d'
+        : 'Personalized for you';
+      if (recMeta && recMeta.used_proxy && recMeta.proxy_title) {
+        subtitle.textContent = base + ' \u2014 similars use library stand-in \u201c' + recMeta.proxy_title + '\u201d (ML).';
+      } else {
+        subtitle.textContent = base;
+      }
     }
-    if (primary) {
-      primary.textContent = 'New Precision match';
-      primary.href = '/filters';
+    if (hintLine) {
+      hintLine.classList.remove('hidden');
+      let baseHint = 'This grid is ranked from your anchor, preferences, and hybrid model scores.';
+      if (recMeta && recMeta.recommendation_mode === 'tmdb_proxy' && recMeta.proxy_title) {
+        baseHint =
+          'TMDb-only anchors use one MovieLens stand-in for the model (\u201c' + recMeta.proxy_title + '\u201d). ' +
+          'Two different TMDb picks with the same stand-in can return very similar rows; pick a title from the built-in library for variety.';
+      }
+      if (recMeta && recMeta.included_tmdb_popular > 0) {
+        baseHint += ' Your era selection is beyond the MovieLens library (\u2248\u20001995\u20132000), so those slots are filled with popular titles from TMDb matching your genres and era.';
+      }
+      hintLine.textContent = baseHint;
     }
-    if (secondary) secondary.classList.add('hidden');
-    if (tertiary) tertiary.classList.remove('hidden');
+    if (allMovies.length === 0) {
+      grid.innerHTML = '<p class="text-on-surface-variant col-span-full">No recommendations found. Try another anchor or loosen filters in <a href="#' + HASH_PRECISION + '" class="text-primary-container font-label-bold hover:underline">Precision match</a>.</p>';
+      return;
+    }
+    setChipState('all');
+    currentFilter = 'all';
+    renderGrid();
+    if (scrollToResults !== false) {
+      const resultsEl = document.getElementById('discover-results-anchor');
+      if (resultsEl) resultsEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
   }
 
   document.addEventListener('DOMContentLoaded', async () => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('feed') === 'trending') {
+    window.addEventListener('hashchange', scrollToHash);
+
+    const grid = document.getElementById('movie-grid');
+    const subtitle = document.getElementById('discover-subtitle');
+    const libHead = document.getElementById('library-catalog-heading');
+    const hintLine = document.getElementById('discover-hint-line');
+    const pageParams = new URLSearchParams(window.location.search);
+    let wantTrending = pageParams.get('feed') === 'trending';
+    if (wantTrending) {
       sessionStorage.removeItem('cm_discover_recommendations');
       window.history.replaceState({}, '', '/discover');
     }
-
-    void loadModernTmdb(false);
-    document.getElementById('modern-tmdb-more')?.addEventListener('click', async () => {
-      if (modernState.page < modernState.totalPages) {
-        modernState.page += 1;
-        await loadModernTmdb(true);
-      }
-    });
-
-    showSpinner('movie-grid');
-    const grid = document.getElementById('movie-grid');
-    const heading = document.getElementById('discover-heading');
-    const subtitle = document.getElementById('discover-subtitle');
+    const hasAnchorQuery = (() => {
+      const a = pageParams.get('anchor');
+      if (a == null || a === '') return false;
+      const n = parseInt(a, 10);
+      return !Number.isNaN(n) && n > 0;
+    })();
 
     document.querySelectorAll('.cm-disc-chip').forEach((btn) => {
       btn.addEventListener('click', () => {
@@ -167,58 +442,250 @@
       });
     });
 
-    const libHead = document.getElementById('library-catalog-heading');
-    const hintLine = document.getElementById('discover-hint-line');
+    await loadPreferencesForm();
+    if (wantTrending || hasAnchorQuery) {
+      precisionUnlocked = true;
+    }
+    updateWizardChrome();
+
+    document.getElementById('cm-gate-to-step1')?.addEventListener('click', () => {
+      document.getElementById(HASH_PREFS)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+
+    const prefForm = document.getElementById('preferences-form');
+    if (prefForm) {
+      prefForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const btn = prefForm.querySelector('button[type="submit"]');
+        btn.disabled = true;
+        btn.innerHTML = 'Saving... <span class="material-symbols-outlined animate-spin ml-xs text-[18px]">progress_activity</span>';
+
+        let gVal = document.getElementById('gender').value;
+        if (gVal === 'male') gVal = 'M';
+        if (gVal === 'female') gVal = 'F';
+
+        const body = {
+          age: parseInt(document.getElementById('age').value, 10) || null,
+          gender: gVal || null,
+          preferred_genres: Array.from(selectedGenres)
+        };
+
+        const res = await apiFetch('/api/preferences', 'PUT', body);
+        btn.disabled = false;
+        btn.innerHTML = 'Save & go to step 2 <span class="material-symbols-outlined">arrow_forward</span>';
+        if (res.ok) {
+          if (selectedGenres.size < 3) {
+            showToast('Select at least three genres, then save again to unlock step 2.', 'info');
+            return;
+          }
+          try {
+            localStorage.setItem(LS_PREFS_SAVED, '1');
+          } catch (e) { /* ignore */ }
+          precisionUnlocked = true;
+          updateWizardChrome();
+          showToast('Preferences saved', 'success');
+          const hp = document.getElementById(HASH_PRECISION);
+          if (hp) hp.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        } else {
+          showToast('Failed to save preferences', 'error');
+        }
+      });
+    }
+
+    const searchInput = document.getElementById('movie-search');
+    const anchorHint = document.getElementById('anchor-hint');
+    const anchorTitle = document.getElementById('anchor-title');
+    const range = document.getElementById('min-rating-range');
+    const minLabel = document.getElementById('min-rating-label');
+    const includeRegionalEl = document.getElementById('include-regional-indian');
+
+    function minRatingValue() {
+      const v = parseInt(range.value, 10) || 0;
+      if (v <= 0) return null;
+      return Math.round(v) / 10;
+    }
+    function syncMinLabel() {
+      const m = minRatingValue();
+      if (m == null) minLabel.textContent = 'Any average';
+      else minLabel.textContent = 'Min. avg rating: ' + m.toFixed(1) + '+ (1–5 scale)';
+    }
+    if (range) {
+      range.addEventListener('input', syncMinLabel);
+      syncMinLabel();
+      const savedMin = localStorage.getItem('cm_min_avg_rating');
+      if (savedMin !== null && savedMin !== '') {
+        const n = Math.round(parseFloat(savedMin) * 10);
+        if (!isNaN(n) && n >= 0 && n <= 50) range.value = String(n);
+        syncMinLabel();
+      }
+    }
+    if (includeRegionalEl) {
+      const savedReg = localStorage.getItem('cm_include_regional_indian');
+      if (savedReg === '0') includeRegionalEl.checked = false;
+      else if (savedReg === '1') includeRegionalEl.checked = true;
+      includeRegionalEl.addEventListener('change', () => {
+        try {
+          localStorage.setItem('cm_include_regional_indian', includeRegionalEl.checked ? '1' : '0');
+        } catch (e) { /* ignore */ }
+      });
+    }
+
+    async function fetchHybridRecommendations() {
+      if (!anchorMovie || anchorMovie.movie_id == null) {
+        return { ok: false, error: 'No anchor film selected.' };
+      }
+      const selected = Array.from(document.querySelectorAll('input[name="era"]:checked')).map(cb => cb.value);
+      localStorage.setItem('cm_era_filters', JSON.stringify(selected));
+      const m = minRatingValue();
+      if (m == null) localStorage.removeItem('cm_min_avg_rating');
+      else localStorage.setItem('cm_min_avg_rating', String(m));
+      const body = {
+        movie_id: anchorMovie.movie_id,
+        era_filter: selected,
+        top_n: 24,
+        include_regional_indian: includeRegionalEl ? !!includeRegionalEl.checked : true
+      };
+      if (m != null) body.min_avg_rating = m;
+      const res = await apiFetch('/api/recommend', 'POST', body);
+      if (!res.ok) {
+        const msg = await parseApiError(res, 'Could not get recommendations');
+        return { ok: false, error: msg };
+      }
+      const data = await res.json();
+      const movies = (data.movies != null) ? data.movies : data;
+      const meta = (data && data.meta) ? data.meta : {};
+      return { ok: true, movies: Array.isArray(movies) ? movies : [], meta: meta };
+    }
+
+    const savedEras = JSON.parse(localStorage.getItem('cm_era_filters') || '[]');
+    if (savedEras.length > 0) {
+      document.querySelectorAll('input[name="era"]').forEach(cb => {
+        cb.checked = savedEras.includes(cb.value);
+      });
+    }
+
+    await restoreAnchorFromUrlOrStorage();
+
+    if (searchInput) {
+      initMovieAutocomplete(searchInput, async (selectedMovie) => {
+        let s = selectedMovie;
+        if (s.in_catalog === false && s.tmdb_id != null && s.tmdb_id !== '') {
+          const tid = Number(s.tmdb_id);
+          if (Number.isNaN(tid) || tid < 1) {
+            showToast('Invalid TMDb id for this result. Try another search result.', 'error');
+            return;
+          }
+          const res = await apiFetch('/api/movies/from-tmdb', 'POST', { tmdb_id: tid });
+          if (!res.ok) {
+            const msg = await parseApiError(res, 'Could not import that title from TMDb');
+            showToast(msg, 'error');
+            return;
+          }
+          const j = await res.json();
+          s = { ...s, movie_id: j.movie_id, in_catalog: true, title: (j.movie && j.movie.title) || s.title };
+        }
+        if (s.in_catalog === false || s.movie_id == null) {
+          showToast('That search result could not be added to the library. Pick a Library or TMDb row and try the import again with TMDB_API_KEY set.', 'error');
+          return;
+        }
+        anchorMovie = s;
+        anchorTitle.textContent = s.title + (s.year ? ' (' + s.year + ')' : '');
+        anchorHint.classList.remove('hidden');
+        persistAnchor(s);
+      }, { useSuggest: true });
+    }
+
+    document.getElementById('apply-filters-btn')?.addEventListener('click', async () => {
+      if (!precisionUnlocked) {
+        showToast('Complete step 1 and save your preferences first.', 'info');
+        document.getElementById(HASH_PREFS)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        return;
+      }
+      if (!anchorMovie || anchorMovie.movie_id == null) {
+        showToast('Select a movie from search to anchor recommendations.', 'error');
+        return;
+      }
+      const btn = document.getElementById('apply-filters-btn');
+      btn.disabled = true;
+      const out = await fetchHybridRecommendations();
+      btn.disabled = false;
+      if (!out.ok) {
+        showToast(out.error || 'Could not get recommendations', 'error');
+        return;
+      }
+      persistAnchor(anchorMovie);
+      sessionStorage.removeItem('cm_discover_recommendations');
+      applyRecommendationsToGrid(out.movies, anchorMovie.title, out.meta, true);
+      showToast('Recommendations updated', 'success');
+    });
+
+    showSpinner('movie-grid');
 
     const raw = sessionStorage.getItem('cm_discover_recommendations');
     if (raw) {
       try {
         const payload = JSON.parse(raw);
         sessionStorage.removeItem('cm_discover_recommendations');
-        allMovies = payload.movies || [];
-        setWorkflowPersonalized();
-        if (libHead) libHead.textContent = 'From your last Precision match';
-        if (heading) heading.textContent = 'Your matches';
-        const recMeta = payload.recommendationMeta || {};
-        if (subtitle) {
-          const base = payload.anchorTitle
-            ? 'Based on \u201c' + payload.anchorTitle + '\u201d'
-            : 'Personalized for you';
-          if (recMeta.used_proxy && recMeta.proxy_title) {
-            subtitle.textContent = base + ' \u2014 similars use library stand-in \u201c' + recMeta.proxy_title + '\u201d (ML).';
-          } else {
-            subtitle.textContent = base;
-          }
-        }
-        if (hintLine) {
-          hintLine.classList.remove('hidden');
-          if (recMeta.recommendation_mode === 'tmdb_proxy' && recMeta.proxy_title) {
-            hintLine.textContent =
-              'TMDb-only anchors use one MovieLens stand-in for the model (\u201c' + recMeta.proxy_title + '\u201d). ' +
-              'Two different TMDb picks with the same stand-in can return very similar rows; pick a title from the built-in library for variety.';
-          } else {
-            hintLine.textContent = 'The grid in this section reflects your anchor. The TMDb 2000+ block at the bottom is global, not your anchor.';
-          }
-        }
-        if (allMovies.length === 0) {
-          grid.innerHTML = '<p class="text-on-surface-variant col-span-full">No recommendations found. Try another anchor or loosen filters on <a href="/filters" class="text-primary-container font-label-bold hover:underline">Precision match</a>.</p>';
+        if (precisionUnlocked) {
+          applyRecommendationsToGrid(
+            payload.movies || [],
+            payload.anchorTitle,
+            payload.recommendationMeta || {},
+            false
+          );
+          scrollToHash();
           return;
         }
-        setChipState('all');
-        currentFilter = 'all';
-        renderGrid();
-        return;
-      } catch (e) {
+        showToast('Complete step 1 to load saved recommendations.', 'info');
+      } catch (err) {
         sessionStorage.removeItem('cm_discover_recommendations');
       }
     }
 
-    if (libHead) libHead.textContent = 'Library catalog (trending)';
+    if (!wantTrending && precisionUnlocked && anchorMovie && anchorMovie.movie_id != null) {
+      const out = await fetchHybridRecommendations();
+      if (out.ok) {
+        persistAnchor(anchorMovie);
+        sessionStorage.removeItem('cm_discover_recommendations');
+        applyRecommendationsToGrid(out.movies, anchorMovie.title, out.meta, false);
+        scrollToHash();
+        return;
+      }
+      if (subtitle) subtitle.textContent = out.error || 'Could not load recommendations.';
+      grid.innerHTML = '<p class="text-error col-span-full">' + (out.error || 'Could not load recommendations.') + ' Try <a href="#' + HASH_PRECISION + '" class="text-primary-container font-label-bold hover:underline">Precision match</a>.</p>';
+      scrollToHash();
+      return;
+    }
+
+    if (!wantTrending && (!anchorMovie || anchorMovie.movie_id == null)) {
+      if (libHead) libHead.textContent = 'Your recommendations';
+      const headingEl = document.getElementById('discover-heading');
+      if (headingEl) headingEl.textContent = 'Recommendations';
+      if (subtitle) {
+        if (!precisionUnlocked) {
+          subtitle.textContent = 'Finish step 1, then use step 2 to pick an anchor and load hybrid recommendations.';
+        } else {
+          subtitle.textContent = 'Search for a film you love in Precision match, then tap Get recommendations. Your hybrid picks appear here (not library trending).';
+        }
+      }
+      if (hintLine) {
+        hintLine.classList.add('hidden');
+        hintLine.textContent = '';
+      }
+      if (!precisionUnlocked) {
+        grid.innerHTML = '<p class="text-on-surface-variant col-span-full text-center md:text-left py-xl">Complete <a href="#' + HASH_PREFS + '" class="text-primary-container font-label-bold hover:underline">step 1 · Preferences</a> first. Then open <a href="#' + HASH_PRECISION + '" class="text-primary-container font-label-bold hover:underline">step 2 · Precision match</a> to choose a title. For catalog popularity only, try <a href="/discover?feed=trending" class="text-primary-container font-label-bold hover:underline">trending titles</a>.</p>';
+      } else {
+        grid.innerHTML = '<p class="text-on-surface-variant col-span-full text-center md:text-left py-xl">No anchor yet. Open <a href="#' + HASH_PRECISION + '" class="text-primary-container font-label-bold hover:underline">Precision match</a>, choose a title, and load recommendations. To browse catalog popularity instead, open <a href="/discover?feed=trending" class="text-primary-container font-label-bold hover:underline">trending titles</a>.</p>';
+      }
+      scrollToHash();
+      return;
+    }
+
+    if (libHead) libHead.textContent = 'Trending in library';
     if (hintLine) {
       hintLine.classList.add('hidden');
       hintLine.textContent = '';
     }
-    setWorkflowTrending();
     const res = await apiFetch('/api/movies/trending');
     grid.innerHTML = '';
     if (res.ok) {
@@ -230,10 +697,11 @@
         if (subtitle) subtitle.textContent = 'Something went wrong.';
         return;
       }
-      if (heading) heading.textContent = 'Discover';
-      if (subtitle) subtitle.textContent = 'Library trending is the first grid (chips filter it). TMDb 2000+ is at the bottom. Personal anchor lists: Precision match.';
+      const heading = document.getElementById('discover-heading');
+      if (heading) heading.textContent = 'Recommendations';
+      if (subtitle) subtitle.textContent = 'Showing library trending (chips filter this grid). Add ?feed=trending to the URL anytime. For personalized rows, use Precision match without that flag.';
       if (movies.length === 0) {
-        grid.innerHTML = '<p class="text-on-surface-variant col-span-full">No trending movies right now. Use <a href="/filters" class="text-primary-container font-label-bold hover:underline">Precision match</a> to build a list from a film you like.</p>';
+        grid.innerHTML = '<p class="text-on-surface-variant col-span-full">No trending movies right now. Use <a href="#' + HASH_PRECISION + '" class="text-primary-container font-label-bold hover:underline">Precision match</a> for recommendations.</p>';
         return;
       }
       allMovies = movies;
@@ -245,6 +713,8 @@
       const err = await parseApiError(res, 'Could not load trending movies');
       grid.innerHTML = '<p class="text-error col-span-full">' + err + '</p>';
     }
+
+    scrollToHash();
   });
 })();
 </script>

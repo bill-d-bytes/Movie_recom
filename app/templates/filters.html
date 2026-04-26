@@ -16,7 +16,7 @@
 <div class="absolute top-0 left-1/2 -translate-x-1/2 w-3/4 h-64 bg-primary-container/10 blur-[100px] rounded-full pointer-events-none z-[-1]"></div>
 <div class="mb-xl text-center md:text-left">
 <h1 class="font-display-lg text-display-lg mb-unit">Precision match</h1>
-<p class="font-body-lg text-body-lg text-on-surface-variant">Pick one anchor film, optionally narrow by era and minimum average rating, then get a tailored list on Discover. Search includes TMDb; scoring uses the MovieLens-backed library.</p>
+<p class="font-body-lg text-body-lg text-on-surface-variant">Pick one anchor film, optionally narrow by era and minimum average rating, then get a tailored list on Recommendations. Search includes TMDb; scoring uses the MovieLens-backed library.</p>
 </div>
 <form class="space-y-xl max-w-4xl" onsubmit="return false">
 <section class="relative group" id="search-section">
@@ -224,7 +224,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         const body = {
             movie_id: anchorMovie.movie_id,
             era_filter: selected,
-            top_n: 24
+            top_n: 24,
+            include_regional_indian: localStorage.getItem('cm_include_regional') !== 'false',
         };
         if (m != null) body.min_avg_rating = m;
         const res = await apiFetch('/api/recommend', 'POST', body);

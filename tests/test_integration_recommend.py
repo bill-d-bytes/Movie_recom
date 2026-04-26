@@ -1,10 +1,9 @@
 """Integration tests: POST /api/recommend (hybrid engine)."""
 import json
-import os
 
 import pytest
 
-from config import Config
+from config import Config, ml_models_are_built
 from tests.conftest import register_json
 
 
@@ -27,7 +26,7 @@ def test_recommend_returns_list_or_service_unavailable(client):
         data=json.dumps({"movie_id": 1, "era_filter": ["90s"], "top_n": 10}),
         content_type="application/json",
     )
-    if not os.path.exists(Config.COSINE_SIM_PATH):
+    if not ml_models_are_built():
         assert res.status_code == 503
         assert "error" in res.get_json()
         return
@@ -44,7 +43,7 @@ def test_recommend_returns_list_or_service_unavailable(client):
 
 @pytest.mark.integration
 def test_recommend_uses_cache_second_call(client):
-    if not os.path.exists(Config.COSINE_SIM_PATH):
+    if not ml_models_are_built():
         pytest.skip("ML models not built")
     register_json(client)
     body = json.dumps({"movie_id": 1, "era_filter": [], "top_n": 5})

@@ -295,9 +295,16 @@ def search_tmdb_suggestions(query: str, limit: int = 10):
     return out
 
 
-def discover_tmdb_movies_modern(min_year: int = None, page: int = 1):
+def discover_tmdb_movies_modern(
+    min_year: int = None,
+    max_year: int = None,
+    page: int = 1,
+    genre_ids: list = None,
+    vote_average_gte: float = None,
+):
     """
-    TMDb /discover/movie with primary release dates from min_year-01-01 through this year.
+    TMDb /discover/movie with primary release dates from min_year-01-01 through max_year-12-31.
+    Optionally filtered by TMDb genre IDs and minimum vote_average.
     Popularity-sorted, for hybrid browse alongside the ml-1m catalog.
 
     Returns: (list of {tmdb_id, title, year, poster_url}, total_pages, err_or_none)
@@ -311,25 +318,45 @@ def discover_tmdb_movies_modern(min_year: int = None, page: int = 1):
     except (TypeError, ValueError):
         min_year = 2000
     min_year = max(1900, min(min_year, 2100))
+
+    end_y = date.today().year
+    if max_year is None:
+        max_year = end_y
+    try:
+        max_year = int(max_year)
+    except (TypeError, ValueError):
+        max_year = end_y
+    max_year = max(min_year, min(max_year, 2200))
+
     try:
         pg = int(page)
     except (TypeError, ValueError):
         pg = 1
     pg = max(1, min(pg, 500))
 
-    end_y = date.today().year
+    params = {
+        "api_key": Config.TMDB_API_KEY,
+        "language": "en-US",
+        "page": pg,
+        "primary_release_date.gte": f"{min_year}-01-01",
+        "primary_release_date.lte": f"{max_year}-12-31",
+        "sort_by": "popularity.desc",
+        "include_adult": "false",
+    }
+    if genre_ids:
+        # OR-logic: any of these genres; use | separator for AND
+        params["with_genres"] = ",".join(str(g) for g in genre_ids)
+    if vote_average_gte is not None:
+        try:
+            params["vote_average.gte"] = str(round(float(vote_average_gte), 1))
+            params["vote_count.gte"] = "50"   # need enough votes to be meaningful
+        except (TypeError, ValueError):
+            pass
+
     try:
         r = _tmdb_get(
             f"{Config.TMDB_BASE_URL}/discover/movie",
-            params={
-                "api_key": Config.TMDB_API_KEY,
-                "language": "en-US",
-                "page": pg,
-                "primary_release_date.gte": f"{min_year}-01-01",
-                "primary_release_date.lte": f"{end_y}-12-31",
-                "sort_by": "popularity.desc",
-                "include_adult": "false",
-            },
+            params=params,
             timeout=15,
         )
         r.raise_for_status()
@@ -353,6 +380,83 @@ def discover_tmdb_movies_modern(min_year: int = None, page: int = 1):
                 "title": title,
                 "year": year,
                 "poster_url": poster_url or "",
+            }
+        )
+    tp = int(data.get("total_pages") or 1)
+    return out, max(1, tp), None
+
+
+def discover_tmdb_movies_by_language(
+    original_language: str,
+    min_year: int = None,
+    page: int = 1,
+    genre_ids: list = None,
+):
+    """
+    TMDb /discover/movie filtered by ISO 639-1 original_language (e.g. hi, te, ta).
+    Optionally filtered by TMDb genre IDs.
+    Popularity-sorted. For Indian regional cinema in recommendation blends.
+
+    Returns: (list of {tmdb_id, title, year, poster_url}, total_pages, err_or_none)
+    """
+    if not (Config.TMDB_API_KEY or "").strip():
+        return [], 0, "TMDB_API_KEY is not set."
+    lang = (original_language or "").strip().lower()[:8]
+    if not lang:
+        return [], 0, "original_language is required."
+    if min_year is None:
+        min_year = getattr(Config, "REGIONAL_MIN_YEAR", 2000)
+    try:
+        min_year = int(min_year)
+    except (TypeError, ValueError):
+        min_year = 2000
+    min_year = max(1900, min(min_year, 2100))
+    try:
+        pg = int(page)
+    except (TypeError, ValueError):
+        pg = 1
+    pg = max(1, min(pg, 500))
+    end_y = date.today().year
+    params = {
+        "api_key": Config.TMDB_API_KEY,
+        "language": "en-US",
+        "page": pg,
+        "with_original_language": lang,
+        "primary_release_date.gte": f"{min_year}-01-01",
+        "primary_release_date.lte": f"{end_y}-12-31",
+        "sort_by": "popularity.desc",
+        "include_adult": "false",
+    }
+    if genre_ids:
+        params["with_genres"] = ",".join(str(g) for g in genre_ids)
+    try:
+        r = _tmdb_get(
+            f"{Config.TMDB_BASE_URL}/discover/movie",
+            params=params,
+            timeout=15,
+        )
+        r.raise_for_status()
+        data = r.json() or {}
+    except (requests.RequestException, TypeError, ValueError):
+        return [], 0, "TMDb discover (by language) failed. Try again or check the API key."
+
+    out = []
+    for item in data.get("results") or []:
+        tid = item.get("id")
+        title = (item.get("title") or item.get("original_title") or "").strip()
+        if not title or not tid:
+            continue
+        rd = item.get("release_date") or ""
+        year = int(rd[:4]) if len(rd) >= 4 and rd[:4].isdigit() else None
+        p = item.get("poster_path")
+        poster_url = f"{Config.TMDB_IMAGE_BASE}{p}" if p else ""
+        out.append(
+            {
+                "tmdb_id": int(tid),
+                "title": title,
+                "year": year,
+                "poster_url": poster_url or "",
+                "original_language": lang,
             }
         )
     tp = int(data.get("total_pages") or 1)

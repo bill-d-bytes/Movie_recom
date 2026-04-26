@@ -79,25 +79,53 @@ def _extract_year(title: str):
 
 
 def load_movies_df() -> pd.DataFrame:
-    df = pd.read_csv(
-        Config.MOVIES_DAT, sep='::', engine='python',
-        names=['movie_id', 'title', 'genres'], encoding='latin-1'
-    )
-    df['year'] = df['title'].apply(_extract_year)
+    if Config.DATASET_USE_25M:
+        df = pd.read_csv(Config.MOVIES_CSV)
+        df = df.rename(
+            columns={"movieId": "movie_id", "title": "title", "genres": "genres"}
+        )
+    else:
+        df = pd.read_csv(
+            Config.MOVIES_DAT,
+            sep="::",
+            engine="python",
+            names=["movie_id", "title", "genres"],
+            encoding="latin-1",
+        )
+    df["year"] = df["title"].apply(_extract_year)
     return df
 
 
 def load_ratings_df() -> pd.DataFrame:
+    if Config.DATASET_USE_25M:
+        df = pd.read_csv(
+            Config.RATINGS_CSV,
+            usecols=["userId", "movieId", "rating"],
+            dtype={"userId": "int32", "movieId": "int32", "rating": "float32"},
+        )
+        return df.rename(
+            columns={"userId": "user_id", "movieId": "movie_id"}
+        )
     return pd.read_csv(
-        Config.RATINGS_DAT, sep='::', engine='python',
-        names=['user_id', 'movie_id', 'rating', 'timestamp'], encoding='latin-1'
+        Config.RATINGS_DAT,
+        sep="::",
+        engine="python",
+        names=["user_id", "movie_id", "rating", "timestamp"],
+        encoding="latin-1",
     )
 
 
 def load_users_df() -> pd.DataFrame:
+    if Config.DATASET_USE_25M:
+        return pd.DataFrame(
+            columns=["user_id", "gender", "age", "occupation", "zip"]
+        )
     return pd.read_csv(
-        Config.USERS_DAT, sep='::', engine='python',
-        names=['user_id', 'gender', 'age', 'occupation', 'zip'], encoding='latin-1'
+        Config.USERS_DAT,
+        sep="::",
+        engine="python",
+        names=["user_id", "gender", "age", "occupation", "zip"],
+        encoding="latin-1",
     )
 
 
@@ -111,9 +139,10 @@ def seed_movies(conn, df: pd.DataFrame):
         print(f"ℹ️  Movies already seeded ({count} rows). Skipping.")
         return
 
+    src = getattr(Config, "ML_MOVIE_SOURCE", "ml1m")
     rows = [
         (int(row.movie_id), row.title, row.genres,
-         int(row.year) if pd.notna(row.year) else None, '', '', None, 'ml1m')
+         int(row.year) if pd.notna(row.year) else None, '', '', None, src)
         for row in df.itertuples()
     ]
     conn.executemany(
@@ -252,18 +281,27 @@ def get_trending_movies(limit: int = 20):
     return [dict(r) for r in rows]
 
 
-def get_latest_movies(limit: int = 30, min_year: int = None):
+def get_latest_movies(
+    limit: int = 30,
+    min_year: int = None,
+    exclude_tmdb_supplements: bool = False,
+):
     """
     Newest-released rows in the catalog (by `year` descending), for blending into recommendations.
+    When exclude_tmdb_supplements=True, only MovieLens-originated rows (ml1m / ml25m) are used so
+    TMDb-only supplements do not fill \"newer in catalog\" slots.
     """
     if min_year is None:
         min_year = Config.LATEST_MIN_YEAR
+    src_clause = ""
+    if exclude_tmdb_supplements:
+        src_clause = " AND COALESCE(source, 'ml1m') != 'tmdb' "
     conn = get_db()
     rows = conn.execute(
-        """
+        f"""
         SELECT movie_id, title, genres, year, tmdb_poster_url, tmdb_overview
         FROM movies
-        WHERE year IS NOT NULL AND year >= ?
+        WHERE year IS NOT NULL AND year >= ? {src_clause}
         ORDER BY year DESC, movie_id DESC
         LIMIT ?
         """,
@@ -382,7 +420,7 @@ if __name__ == '__main__':
     create_tables(conn)
     ensure_movies_migrated()
 
-    print("\n📥 Loading ml-1m dataset files…")
+    print(f"\n📥 Loading MovieLens dataset ({'25M CSV' if Config.DATASET_USE_25M else '1M'})…")
     movies_df  = load_movies_df()
     ratings_df = load_ratings_df()
     users_df   = load_users_df()

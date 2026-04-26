@@ -115,7 +115,9 @@ function buildMovieCard(movie) {
   const genres    = genreList.slice(0, 2).join(' · ');
   const year      = movie.year || '';
   const poster    = movie.tmdb_poster_url || '/static/img/no_poster.png';
-  const isLatest  = movie.rec_source === 'latest';
+  const isLatest   = movie.rec_source === 'latest';
+  const isRegional = movie.rec_source === 'regional_in';
+  const isPopular  = movie.rec_source === 'tmdb_popular';
 
   return `
     <article
@@ -135,6 +137,12 @@ function buildMovieCard(movie) {
         ${isLatest ? `
         <div class="absolute top-sm left-sm px-sm py-xs rounded border border-tertiary/50 bg-tertiary/15 backdrop-blur-sm
                     text-tertiary font-label-bold text-label-sm">Newer in catalog</div>` : ''}
+        ${isRegional ? `
+        <div class="absolute top-sm left-sm px-sm py-xs rounded border border-primary-container/40 bg-primary-container/10 backdrop-blur-sm
+                    text-primary-container font-label-bold text-label-sm">Regional pick</div>` : ''}
+        ${isPopular ? `
+        <div class="absolute top-sm left-sm px-sm py-xs rounded border border-secondary/40 bg-secondary/10 backdrop-blur-sm
+                    text-secondary font-label-bold text-label-sm">Popular pick</div>` : ''}
         <!-- Match badge (visible on hover) -->
         ${matchPct > 0 ? `
         <div class="absolute top-sm right-sm opacity-0 group-hover:opacity-100 transition-opacity duration-300
@@ -222,9 +230,12 @@ function initMovieAutocomplete(inputEl, onSelect, options) {
       const url = useSuggest
         ? `/api/movies/suggest?q=${encodeURIComponent(q)}`
         : `/api/movies/search?q=${encodeURIComponent(q)}`;
-      const res  = await apiFetch(url);
-      if (!res.ok) return;
-      const payload = await res.json();
+      let res, payload;
+      try {
+        res = await apiFetch(url);
+        if (!res.ok) return;
+        payload = await res.json();
+      } catch (_) { return; }
       const data = useSuggest ? (payload.results || []) : payload;
 
       dropdown?.remove();
@@ -354,7 +365,7 @@ function initHeaderChrome() {
       if (m && m.movie_id != null) {
         window.location.href = '/movie/' + m.movie_id;
       } else if (m && m.in_catalog === false) {
-        showToast('That title is not in the CineMatch library (ml-1m). Pick a Library match or TMDb · in app.', 'info');
+        showToast('That title is not in the CineMatch library. Pick a Library match or use TMDb \u00b7 in app.', 'info');
       }
     });
     document.addEventListener('keydown', (e) => {

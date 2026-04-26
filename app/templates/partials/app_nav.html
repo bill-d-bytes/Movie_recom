@@ -1,9 +1,7 @@
 {# Active route highlighting uses Flask's request.endpoint (see app.py view names). #}
 {% set ep = request.endpoint %}
 {% set active_disc = ep in ('discover_page', 'movie_detail_page') %}
-{% set active_filt = ep == 'filters_page' %}
 {% set active_prof = ep == 'profile_page' %}
-{% set active_pref = ep == 'preferences_page' %}
 {% set nav_inactive = "text-neutral-400 font-medium hover:text-white transition-colors font-['Be_Vietnam_Pro'] antialiased hover:bg-white/10 transition-all duration-300 active:scale-95 transition-transform" %}
 {% set nav_active = "text-white font-bold border-b-2 border-red-600 pb-1 font-['Be_Vietnam_Pro'] antialiased hover:bg-white/10 transition-all duration-300 active:scale-95 transition-transform" %}
 <header class="fixed top-0 w-full z-50 bg-black/80 backdrop-blur-xl border-b border-neutral-800/50 hidden md:block">
@@ -11,10 +9,9 @@
 <div class="flex items-center gap-8 min-w-0">
 <a class="shrink-0 text-2xl font-black tracking-tighter text-red-600 uppercase font-['Be_Vietnam_Pro'] antialiased" href="/discover">CineMatch</a>
 <nav class="flex items-center flex-wrap gap-x-6 gap-y-1" aria-label="Main">
-<a class="{{ nav_active if active_disc else nav_inactive }}" href="/discover" {% if active_disc %}aria-current="page"{% endif %}>Discover</a>
-<a class="{{ nav_active if active_filt else nav_inactive }}" href="/filters" {% if active_filt %}aria-current="page"{% endif %}>Precision match</a>
+<a class="{{ nav_active if active_disc else nav_inactive }}" href="/discover" {% if active_disc %}aria-current="page"{% endif %}>Recommendations</a>
+<a class="{{ nav_inactive }}" href="/discover#discover-precision">Match</a>
 <a class="{{ nav_active if active_prof else nav_inactive }}" href="/profile" {% if active_prof %}aria-current="page"{% endif %}>Profile</a>
-<a class="{{ nav_active if active_pref else nav_inactive }}" href="/preferences" {% if active_pref %}aria-current="page"{% endif %}>Preferences</a>
 </nav>
 </div>
 <div class="flex items-center gap-4 shrink-0">
@@ -39,15 +36,11 @@
 <div class="flex justify-around items-center h-16 px-2 pb-safe w-full max-w-[1440px] mx-auto">
 <a class="flex flex-1 min-w-0 flex-col items-center justify-center gap-0.5 py-1 transition-all active:scale-90 {{ 'text-red-600 scale-105' if active_disc else 'text-neutral-500 hover:text-red-500' }}" href="/discover" {% if active_disc %}aria-current="page"{% endif %}>
 <span class="material-symbols-outlined text-[22px] {{ 'filled' if active_disc else '' }}">explore</span>
-<span class="truncate max-w-full">Discover</span>
+<span class="truncate max-w-full">Recommendations</span>
 </a>
-<a class="flex flex-1 min-w-0 flex-col items-center justify-center gap-0.5 py-1 transition-all active:scale-90 {{ 'text-red-600 scale-105' if active_filt else 'text-neutral-500 hover:text-red-500' }}" href="/filters" {% if active_filt %}aria-current="page"{% endif %}>
-<span class="material-symbols-outlined text-[22px] {{ 'filled' if active_filt else '' }}">tune</span>
-<span class="truncate max-w-full">Filters</span>
-</a>
-<a class="flex flex-1 min-w-0 flex-col items-center justify-center gap-0.5 py-1 transition-all active:scale-90 {{ 'text-red-600 scale-105' if active_pref else 'text-neutral-500 hover:text-red-500' }}" href="/preferences" {% if active_pref %}aria-current="page"{% endif %}>
-<span class="material-symbols-outlined text-[22px] {{ 'filled' if active_pref else '' }}">palette</span>
-<span class="truncate max-w-full">Prefs</span>
+<a class="flex flex-1 min-w-0 flex-col items-center justify-center gap-0.5 py-1 transition-all active:scale-90 text-neutral-500 hover:text-red-500" href="/discover#discover-precision">
+<span class="material-symbols-outlined text-[22px]">tune</span>
+<span class="truncate max-w-full">Match</span>
 </a>
 <a class="flex flex-1 min-w-0 flex-col items-center justify-center gap-0.5 py-1 transition-all active:scale-90 {{ 'text-red-600 scale-105' if active_prof else 'text-neutral-500 hover:text-red-500' }}" href="/profile" {% if active_prof %}aria-current="page"{% endif %}>
 <span class="material-symbols-outlined text-[22px] {{ 'filled' if active_prof else '' }}">person</span>

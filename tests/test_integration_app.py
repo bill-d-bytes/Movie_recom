@@ -30,5 +30,15 @@ def test_discover_redirects_unauthenticated(client):
 @pytest.mark.integration
 def test_protected_pages_200_with_session(client):
     register_json(client)
-    for path in ("/discover", "/profile", "/preferences", "/filters", "/movie/1"):
+    for path in ("/discover", "/profile", "/movie/1"):
         assert client.get(path).status_code == 200
+
+
+@pytest.mark.integration
+def test_legacy_preferences_and_filters_redirect_to_discover(client):
+    register_json(client)
+    for path in ("/preferences", "/filters"):
+        res = client.get(path, follow_redirects=False)
+        assert res.status_code == 302
+        loc = res.location or ""
+        assert "/discover" in loc
