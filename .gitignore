@@ -10,3 +10,7 @@ htmlcov/
 .DS_Store
 *.db-shm
 *.db-wal
+# ML-25M large data files (too big for git; download from grouplens.org/datasets/movielens/25m)
+ml-25m/ratings.csv
+ml-25m/genome-scores.csv
+ml-25m/tags.csv
