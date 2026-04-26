@@ -10,3 +10,15 @@ htmlcov/
 .DS_Store
 *.db-shm
 *.db-wal
+
+# Database (binary, regenerated at runtime)
+cinematch.db
+
+# Trained model artefacts (regenerated via: python recommender.py --build)
+models/*.pkl
+
+# ML-25M large data files (too big for git)
+# Download from https://grouplens.org/datasets/movielens/25m/
+ml-25m/ratings.csv
+ml-25m/genome-scores.csv
+ml-25m/tags.csv
