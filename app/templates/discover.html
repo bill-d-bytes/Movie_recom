@@ -1,0 +1,251 @@
+{% extends "base_app.html" %}
+{% block title %}CineMatch - Discover{% endblock %}
+{% block app_content %}
+<main class="max-w-[1440px] mx-auto px-[5%] py-lg flex-1 w-full">
+<div class="mb-xl flex flex-col gap-sm">
+<h1 id="discover-heading" class="font-headline-lg text-headline-lg text-on-surface">Discover</h1>
+<p id="discover-subtitle" class="font-body-md text-body-md text-on-surface-variant">Loading…</p>
+<p id="discover-hint-line" class="hidden font-body-sm text-on-surface-variant max-w-3xl border-l-2 border-tertiary/50 pl-md py-xs"></p>
+</div>
+<div id="discover-workflow" class="mb-lg rounded-xl border border-surface-variant/50 bg-surface-container-low/40 p-md md:p-lg flex flex-col md:flex-row md:items-center md:justify-between gap-md">
+<p id="discover-workflow-text" class="font-body-md text-body-md text-on-surface-variant max-w-3xl"></p>
+<div class="flex flex-wrap items-center gap-sm shrink-0">
+<a id="discover-workflow-primary" href="/filters" class="inline-flex items-center justify-center gap-sm px-xxl py-md rounded-full bg-primary-container text-on-primary-container font-label-bold text-label-bold hover:bg-inverse-primary hover:shadow-[0_0_20px_rgba(229,9,20,0.35)] transition-all">Precision match</a>
+<a id="discover-workflow-secondary" href="/preferences" class="hidden inline-flex items-center justify-center gap-sm px-lg py-md rounded-full border border-surface-variant text-on-surface font-label-bold text-label-sm hover:bg-surface-container-high transition-colors">Tune preferences</a>
+<a id="discover-workflow-tertiary" href="/discover?feed=trending" class="hidden font-label-bold text-label-sm text-primary-container hover:underline">Show trending catalog</a>
+</div>
+</div>
+<h2 id="library-catalog-heading" class="font-headline-md text-headline-md text-on-surface mb-sm">Library catalog (trending)</h2>
+<div id="discover-chips" class="flex gap-sm overflow-x-auto pb-sm mb-lg no-scrollbar" role="tablist" aria-label="Filter by category">
+<button type="button" role="tab" aria-selected="true" data-cm-disc-filter="all" class="cm-disc-chip px-md py-sm bg-primary-container text-on-primary-container rounded-full font-label-bold text-label-bold whitespace-nowrap border border-primary-container">All</button>
+<button type="button" role="tab" aria-selected="false" data-cm-disc-filter="action" class="cm-disc-chip px-md py-sm bg-surface-container text-on-surface rounded-full font-label-bold text-label-bold whitespace-nowrap hover:bg-surface-variant transition-colors border border-outline-variant">Action &amp; Adventure</button>
+<button type="button" role="tab" aria-selected="false" data-cm-disc-filter="scifi" class="cm-disc-chip px-md py-sm bg-surface-container text-on-surface rounded-full font-label-bold text-label-bold whitespace-nowrap hover:bg-surface-variant transition-colors border border-outline-variant">Sci-Fi &amp; Thriller</button>
+<button type="button" role="tab" aria-selected="false" data-cm-disc-filter="acclaimed" class="cm-disc-chip px-md py-sm bg-surface-container text-on-surface rounded-full font-label-bold text-label-bold whitespace-nowrap hover:bg-surface-variant transition-colors border border-outline-variant">Critically Acclaimed</button>
+<button type="button" role="tab" aria-selected="false" data-cm-disc-filter="new" class="cm-disc-chip px-md py-sm bg-surface-container text-on-surface rounded-full font-label-bold text-label-bold whitespace-nowrap hover:bg-surface-variant transition-colors border border-outline-variant">Newer Releases</button>
+</div>
+<div id="movie-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-gutter">
+</div>
+<section class="mt-xl mb-xl" id="modern-tmdb-block" aria-labelledby="modern-tmdb-h2">
+<h2 id="modern-tmdb-h2" class="font-headline-md text-headline-md text-on-surface mb-xs">2000 to present (TMDb)</h2>
+<p class="font-body-sm text-on-surface-variant mb-md">Same strip for every visitor—<span class="text-on-surface font-label-bold">not</span> from your anchor. Use the grid <span class="whitespace-nowrap">above</span> for Precision match results. <span class="text-on-surface font-label-bold">In CineMatch</span> opens the app; <span class="text-on-surface font-label-bold">TMDb</span> opens The Movie Database.</p>
+<div id="modern-tmdb-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-gutter min-h-[80px]">
+</div>
+<div class="mt-md flex justify-center hidden" id="modern-tmdb-more-wrap">
+<button type="button" id="modern-tmdb-more" class="px-xl py-md rounded-lg border border-surface-variant text-on-surface font-label-bold hover:bg-surface-container-high transition-colors">Load more</button>
+</div>
+</section>
+</main>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  const CHIP_ACTIVE = 'px-md py-sm bg-primary-container text-on-primary-container rounded-full font-label-bold text-label-bold whitespace-nowrap border border-primary-container';
+  const CHIP_IDLE = 'px-md py-sm bg-surface-container text-on-surface rounded-full font-label-bold text-label-bold whitespace-nowrap hover:bg-surface-variant transition-colors border border-outline-variant';
+
+  let allMovies = [];
+  let currentFilter = 'all';
+  const modernState = { page: 1, totalPages: 1 };
+
+  async function loadModernTmdb(append) {
+    const grid = document.getElementById('modern-tmdb-grid');
+    const moreWrap = document.getElementById('modern-tmdb-more-wrap');
+    if (!grid) return;
+    if (!append) {
+      grid.innerHTML = '<p class="text-on-surface-variant col-span-full">Loading TMDb picks…</p>';
+      modernState.page = 1;
+    }
+    const r = await apiFetch('/api/movies/modern-tmdb?page=' + modernState.page);
+    if (!r.ok) {
+      grid.innerHTML = '<p class="text-error col-span-full">' + (await parseApiError(r, 'Could not load modern discover')) + '</p>';
+      if (moreWrap) moreWrap.classList.add('hidden');
+      return;
+    }
+    const j = await r.json();
+    const list = j.results || [];
+    if (j.message && !list.length) {
+      grid.innerHTML = '<p class="text-on-surface-variant col-span-full">' + j.message + '</p>';
+      if (moreWrap) moreWrap.classList.add('hidden');
+      return;
+    }
+    modernState.totalPages = j.total_pages || 1;
+    const cards = list.map((x) => buildTmdbRelatedCard(x)).join('');
+    if (append) {
+      grid.insertAdjacentHTML('beforeend', cards);
+    } else {
+      grid.innerHTML = cards;
+    }
+    if (moreWrap) {
+      if (modernState.page < modernState.totalPages) {
+        moreWrap.classList.remove('hidden');
+      } else {
+        moreWrap.classList.add('hidden');
+      }
+    }
+  }
+
+  function setChipState(key) {
+    document.querySelectorAll('.cm-disc-chip').forEach((btn) => {
+      const k = btn.getAttribute('data-cm-disc-filter');
+      const on = k === key;
+      btn.setAttribute('aria-selected', on ? 'true' : 'false');
+      btn.className = 'cm-disc-chip ' + (on ? CHIP_ACTIVE : CHIP_IDLE);
+    });
+  }
+
+  function renderGrid() {
+    const grid = document.getElementById('movie-grid');
+    const list = filterDiscoverMovies(allMovies, currentFilter);
+    if (!list.length) {
+      grid.innerHTML = '<p class="text-on-surface-variant col-span-full">No movies match this filter. Try <strong>All</strong> or another category, or run <a href="/filters" class="text-primary-container font-label-bold hover:underline">Precision match</a> for a fresh list.</p>';
+      return;
+    }
+    grid.innerHTML = list.map((m) => buildMovieCard(m)).join('');
+  }
+
+  function setWorkflowTrending() {
+    const text = document.getElementById('discover-workflow-text');
+    const primary = document.getElementById('discover-workflow-primary');
+    const secondary = document.getElementById('discover-workflow-secondary');
+    const tertiary = document.getElementById('discover-workflow-tertiary');
+    if (text) {
+      text.textContent = 'Start with the library grid and chips (ml-1m trending). TMDb 2000+ is at the bottom—global, not personalized. Your anchor-based lists come from Precision match.';
+    }
+    if (primary) {
+      primary.textContent = 'Precision match';
+      primary.href = '/filters';
+    }
+    if (secondary) {
+      secondary.textContent = 'Tune preferences';
+      secondary.classList.remove('hidden');
+    }
+    if (tertiary) tertiary.classList.add('hidden');
+  }
+
+  function setWorkflowPersonalized() {
+    const text = document.getElementById('discover-workflow-text');
+    const primary = document.getElementById('discover-workflow-primary');
+    const secondary = document.getElementById('discover-workflow-secondary');
+    const tertiary = document.getElementById('discover-workflow-tertiary');
+    if (text) {
+      text.textContent = 'The first grid (below) is from your last Precision match—chips only filter that grid. The TMDb 2000+ block at the bottom is the same for everyone, not your anchor.';
+    }
+    if (primary) {
+      primary.textContent = 'New Precision match';
+      primary.href = '/filters';
+    }
+    if (secondary) secondary.classList.add('hidden');
+    if (tertiary) tertiary.classList.remove('hidden');
+  }
+
+  document.addEventListener('DOMContentLoaded', async () => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('feed') === 'trending') {
+      sessionStorage.removeItem('cm_discover_recommendations');
+      window.history.replaceState({}, '', '/discover');
+    }
+
+    void loadModernTmdb(false);
+    document.getElementById('modern-tmdb-more')?.addEventListener('click', async () => {
+      if (modernState.page < modernState.totalPages) {
+        modernState.page += 1;
+        await loadModernTmdb(true);
+      }
+    });
+
+    showSpinner('movie-grid');
+    const grid = document.getElementById('movie-grid');
+    const heading = document.getElementById('discover-heading');
+    const subtitle = document.getElementById('discover-subtitle');
+
+    document.querySelectorAll('.cm-disc-chip').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const k = btn.getAttribute('data-cm-disc-filter') || 'all';
+        if (k === currentFilter) return;
+        currentFilter = k;
+        setChipState(k);
+        renderGrid();
+      });
+    });
+
+    const libHead = document.getElementById('library-catalog-heading');
+    const hintLine = document.getElementById('discover-hint-line');
+
+    const raw = sessionStorage.getItem('cm_discover_recommendations');
+    if (raw) {
+      try {
+        const payload = JSON.parse(raw);
+        sessionStorage.removeItem('cm_discover_recommendations');
+        allMovies = payload.movies || [];
+        setWorkflowPersonalized();
+        if (libHead) libHead.textContent = 'From your last Precision match';
+        if (heading) heading.textContent = 'Your matches';
+        const recMeta = payload.recommendationMeta || {};
+        if (subtitle) {
+          const base = payload.anchorTitle
+            ? 'Based on \u201c' + payload.anchorTitle + '\u201d'
+            : 'Personalized for you';
+          if (recMeta.used_proxy && recMeta.proxy_title) {
+            subtitle.textContent = base + ' \u2014 similars use library stand-in \u201c' + recMeta.proxy_title + '\u201d (ML).';
+          } else {
+            subtitle.textContent = base;
+          }
+        }
+        if (hintLine) {
+          hintLine.classList.remove('hidden');
+          if (recMeta.recommendation_mode === 'tmdb_proxy' && recMeta.proxy_title) {
+            hintLine.textContent =
+              'TMDb-only anchors use one MovieLens stand-in for the model (\u201c' + recMeta.proxy_title + '\u201d). ' +
+              'Two different TMDb picks with the same stand-in can return very similar rows; pick a title from the built-in library for variety.';
+          } else {
+            hintLine.textContent = 'The grid in this section reflects your anchor. The TMDb 2000+ block at the bottom is global, not your anchor.';
+          }
+        }
+        if (allMovies.length === 0) {
+          grid.innerHTML = '<p class="text-on-surface-variant col-span-full">No recommendations found. Try another anchor or loosen filters on <a href="/filters" class="text-primary-container font-label-bold hover:underline">Precision match</a>.</p>';
+          return;
+        }
+        setChipState('all');
+        currentFilter = 'all';
+        renderGrid();
+        return;
+      } catch (e) {
+        sessionStorage.removeItem('cm_discover_recommendations');
+      }
+    }
+
+    if (libHead) libHead.textContent = 'Library catalog (trending)';
+    if (hintLine) {
+      hintLine.classList.add('hidden');
+      hintLine.textContent = '';
+    }
+    setWorkflowTrending();
+    const res = await apiFetch('/api/movies/trending');
+    grid.innerHTML = '';
+    if (res.ok) {
+      let movies;
+      try {
+        movies = await res.json();
+      } catch (e) {
+        grid.innerHTML = '<p class="text-error col-span-full">Invalid response from server. Try again.</p>';
+        if (subtitle) subtitle.textContent = 'Something went wrong.';
+        return;
+      }
+      if (heading) heading.textContent = 'Discover';
+      if (subtitle) subtitle.textContent = 'Library trending is the first grid (chips filter it). TMDb 2000+ is at the bottom. Personal anchor lists: Precision match.';
+      if (movies.length === 0) {
+        grid.innerHTML = '<p class="text-on-surface-variant col-span-full">No trending movies right now. Use <a href="/filters" class="text-primary-container font-label-bold hover:underline">Precision match</a> to build a list from a film you like.</p>';
+        return;
+      }
+      allMovies = movies;
+      setChipState('all');
+      currentFilter = 'all';
+      renderGrid();
+    } else {
+      if (subtitle) subtitle.textContent = 'Could not load the feed.';
+      const err = await parseApiError(res, 'Could not load trending movies');
+      grid.innerHTML = '<p class="text-error col-span-full">' + err + '</p>';
+    }
+  });
+})();
+</script>
+{% endblock %}

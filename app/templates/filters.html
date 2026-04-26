@@ -1,0 +1,250 @@
+{% extends "base_app.html" %}
+{% block title %}CineMatch - Precision match{% endblock %}
+{% block body_class %}bg-background text-on-background font-body-md antialiased min-h-screen flex flex-col pb-20 md:pb-0 pt-20 selection:bg-primary-container selection:text-white{% endblock %}
+{% block head_extra %}
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .material-symbols-outlined.fill-icon {
+            font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+    </style>
+{% endblock %}
+{% block app_content %}
+<main class="flex-grow pt-8 pb-8 md:pt-[100px] px-[5vw] max-w-container-max mx-auto w-full relative z-10">
+<div class="absolute top-0 left-1/2 -translate-x-1/2 w-3/4 h-64 bg-primary-container/10 blur-[100px] rounded-full pointer-events-none z-[-1]"></div>
+<div class="mb-xl text-center md:text-left">
+<h1 class="font-display-lg text-display-lg mb-unit">Precision match</h1>
+<p class="font-body-lg text-body-lg text-on-surface-variant">Pick one anchor film, optionally narrow by era and minimum average rating, then get a tailored list on Discover. Search includes TMDb; scoring uses the MovieLens-backed library.</p>
+</div>
+<form class="space-y-xl max-w-4xl" onsubmit="return false">
+<section class="relative group" id="search-section">
+<div class="absolute inset-y-0 left-0 pl-lg flex items-center pointer-events-none">
+<span class="material-symbols-outlined text-outline-variant group-focus-within:text-primary-container transition-colors">search</span>
+</div>
+<input id="movie-search" class="w-full bg-surface-container-high border-b-2 border-outline-variant text-on-surface font-body-lg px-xl py-lg pl-xxl focus:outline-none focus:border-primary-container focus:bg-surface-container-highest transition-all placeholder:text-outline-variant shadow-inner rounded-t-xl" placeholder="Search titles (US catalog + TMDb)…" type="text" autocomplete="off"/>
+</section>
+<p id="anchor-hint" class="hidden font-label-sm text-label-sm text-primary-container mt-sm">Anchor: <span id="anchor-title" class="font-label-bold"></span></p>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-gutter">
+<section class="bg-surface-container rounded-xl p-lg border border-surface-container-high flex flex-col gap-md">
+<header class="flex items-center gap-sm">
+<span class="material-symbols-outlined text-primary-container">history</span>
+<h2 class="font-headline-md text-headline-md">Cinematic Era</h2>
+</header>
+<p class="font-label-sm text-label-sm text-on-surface-variant mb-sm">Select eras to narrow recommendations (empty = all eras).</p>
+<div class="grid grid-cols-2 gap-unit">
+<label class="cursor-pointer relative">
+<input class="peer sr-only" name="era" type="checkbox" value="classic"/>
+<div class="bg-surface-container-lowest border border-surface-container-high p-md rounded-lg text-center font-label-bold text-label-bold text-on-surface-variant peer-checked:border-primary-container peer-checked:bg-primary-container/10 peer-checked:text-white transition-all hover:border-outline-variant">
+                                Classic (&lt; '80s)
+                            </div>
+</label>
+<label class="cursor-pointer relative">
+<input class="peer sr-only" name="era" type="checkbox" value="80s"/>
+<div class="bg-surface-container-lowest border border-surface-container-high p-md rounded-lg text-center font-label-bold text-label-bold text-on-surface-variant peer-checked:border-primary-container peer-checked:bg-primary-container/10 peer-checked:text-white transition-all hover:border-outline-variant">
+                                The 80s
+                            </div>
+</label>
+<label class="cursor-pointer relative">
+<input class="peer sr-only" name="era" type="checkbox" value="90s"/>
+<div class="bg-surface-container-lowest border border-surface-container-high p-md rounded-lg text-center font-label-bold text-label-bold text-on-surface-variant peer-checked:border-primary-container peer-checked:bg-primary-container/10 peer-checked:text-white transition-all hover:border-outline-variant">
+                                The 90s
+                            </div>
+</label>
+<label class="cursor-pointer relative">
+<input class="peer sr-only" name="era" type="checkbox" value="00s"/>
+<div class="bg-surface-container-lowest border border-surface-container-high p-md rounded-lg text-center font-label-bold text-label-bold text-on-surface-variant peer-checked:border-primary-container peer-checked:bg-primary-container/10 peer-checked:text-white transition-all hover:border-outline-variant">
+                                The 00s
+                            </div>
+</label>
+<label class="cursor-pointer relative col-span-2">
+<input class="peer sr-only" name="era" type="checkbox" value="modern"/>
+<div class="bg-surface-container-lowest border border-surface-container-high p-md rounded-lg text-center font-label-bold text-label-bold text-on-surface-variant peer-checked:border-primary-container peer-checked:bg-primary-container/10 peer-checked:text-white transition-all hover:border-outline-variant">
+                                Modern (2010s - Present)
+                            </div>
+</label>
+</div>
+</section>
+<section class="bg-surface-container/50 backdrop-blur-xl rounded-xl p-lg border border-surface-container-high flex flex-col gap-md relative overflow-hidden">
+<div class="absolute -bottom-10 -right-10 text-9xl opacity-5 pointer-events-none">
+<span class="material-symbols-outlined fill-icon">star</span>
+</div>
+<header class="flex items-center gap-sm relative z-10">
+<span class="material-symbols-outlined text-primary-container fill-icon">star</span>
+<h2 class="font-headline-md text-headline-md">Minimum rating</h2>
+</header>
+<p class="font-label-sm text-label-sm text-on-surface-variant mb-sm relative z-10">Use average MovieLens (1–5) rating in the dataset. Titles with no ratings are not filtered out.</p>
+<div class="flex flex-col gap-sm relative z-10">
+<label for="min-rating-range" id="min-rating-label" class="font-label-bold text-label-bold text-on-surface">Any average</label>
+<input type="range" id="min-rating-range" min="0" max="50" step="1" value="0" class="w-full h-2 bg-surface-container-highest rounded-lg appearance-none cursor-pointer accent-primary-container" aria-valuemin="0" aria-valuemax="5" aria-describedby="min-rating-hint"/>
+<p id="min-rating-hint" class="font-label-sm text-label-sm text-on-surface-variant">0 = any · 30 = 3.0+ · 40 = 4.0+</p>
+</div>
+</section>
+</div>
+<div class="pt-lg flex justify-end">
+<button id="apply-filters-btn" class="w-full md:w-auto bg-primary-container text-on-primary-container font-label-bold text-label-bold px-xxl py-md rounded-full hover:bg-inverse-primary hover:shadow-[0_0_20px_rgba(229,9,20,0.4)] transition-all duration-300 flex items-center justify-center gap-sm group" type="button">
+<span class="material-symbols-outlined group-hover:rotate-12 transition-transform">filter_list</span>
+                    Get recommendations
+                </button>
+</div>
+</form>
+</main>
+{% endblock %}
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', async () => {
+    const searchInput = document.getElementById('movie-search');
+    let anchorMovie = null;
+    const anchorHint = document.getElementById('anchor-hint');
+    const anchorTitle = document.getElementById('anchor-title');
+    const range = document.getElementById('min-rating-range');
+    const minLabel = document.getElementById('min-rating-label');
+    const LS_ANCHOR = 'cm_last_anchor';
+
+    function persistAnchor(m) {
+        if (!m || m.movie_id == null) return;
+        try {
+            localStorage.setItem(LS_ANCHOR, JSON.stringify({
+                movie_id: m.movie_id,
+                title: m.title || '',
+                year: m.year != null ? m.year : null
+            }));
+        } catch (e) { /* ignore quota */ }
+    }
+
+    async function restoreAnchorFromUrlOrStorage() {
+        const params = new URLSearchParams(window.location.search);
+        const fromQuery = params.get('anchor');
+        let movieId = null;
+        if (fromQuery != null && fromQuery !== '') {
+            const n = parseInt(fromQuery, 10);
+            if (!Number.isNaN(n) && n > 0) movieId = n;
+        }
+        if (movieId == null) {
+            try {
+                const raw = localStorage.getItem(LS_ANCHOR);
+                if (raw) {
+                    const o = JSON.parse(raw);
+                    if (o && o.movie_id != null) {
+                        const n = parseInt(o.movie_id, 10);
+                        if (!Number.isNaN(n) && n > 0) movieId = n;
+                    }
+                }
+            } catch (e) { /* ignore */ }
+        }
+        if (movieId == null) return;
+        const res = await apiFetch('/api/movies/' + movieId);
+        if (!res.ok) return;
+        const movie = await res.json();
+        anchorMovie = {
+            movie_id: movieId,
+            title: movie.title,
+            year: movie.year,
+            in_catalog: true
+        };
+        searchInput.value = movie.title || '';
+        anchorTitle.textContent = (movie.title || '') + (movie.year ? ' (' + movie.year + ')' : '');
+        anchorHint.classList.remove('hidden');
+        persistAnchor(anchorMovie);
+        if (fromQuery != null && fromQuery !== '') {
+            window.history.replaceState({}, '', '/filters');
+        }
+    }
+
+    function minRatingValue() {
+        const v = parseInt(range.value, 10) || 0;
+        if (v <= 0) return null;
+        return Math.round(v) / 10;
+    }
+    function syncMinLabel() {
+        const m = minRatingValue();
+        if (m == null) minLabel.textContent = 'Any average';
+        else minLabel.textContent = 'Min. avg rating: ' + m.toFixed(1) + '+ (1–5 scale)';
+    }
+    range.addEventListener('input', syncMinLabel);
+    syncMinLabel();
+
+    const savedMin = localStorage.getItem('cm_min_avg_rating');
+    if (savedMin !== null && savedMin !== '') {
+        const n = Math.round(parseFloat(savedMin) * 10);
+        if (!isNaN(n) && n >= 0 && n <= 50) range.value = String(n);
+        syncMinLabel();
+    }
+
+    initMovieAutocomplete(searchInput, async (selectedMovie) => {
+        let s = selectedMovie;
+        if (s.in_catalog === false && s.tmdb_id != null && s.tmdb_id !== '') {
+            const tid = Number(s.tmdb_id);
+            if (Number.isNaN(tid) || tid < 1) {
+                showToast('Invalid TMDb id for this result. Try another search result.', 'error');
+                return;
+            }
+            const res = await apiFetch('/api/movies/from-tmdb', 'POST', { tmdb_id: tid });
+            if (!res.ok) {
+                const msg = await parseApiError(res, 'Could not import that title from TMDb');
+                showToast(msg, 'error');
+                return;
+            }
+            const j = await res.json();
+            s = { ...s, movie_id: j.movie_id, in_catalog: true, title: (j.movie && j.movie.title) || s.title };
+        }
+        if (s.in_catalog === false || s.movie_id == null) {
+            showToast('That search result could not be added to the library. Pick a Library or TMDb row and try the import again with TMDB_API_KEY set.', 'error');
+            return;
+        }
+        anchorMovie = s;
+        anchorTitle.textContent = s.title + (s.year ? ' (' + s.year + ')' : '');
+        anchorHint.classList.remove('hidden');
+        persistAnchor(s);
+    }, { useSuggest: true });
+
+    const savedEras = JSON.parse(localStorage.getItem('cm_era_filters') || '[]');
+    if (savedEras.length > 0) {
+        document.querySelectorAll('input[name="era"]').forEach(cb => {
+            cb.checked = savedEras.includes(cb.value);
+        });
+    }
+
+    await restoreAnchorFromUrlOrStorage();
+
+    document.getElementById('apply-filters-btn').addEventListener('click', async () => {
+        if (!anchorMovie || anchorMovie.movie_id == null) {
+            showToast('Select a movie from search to anchor recommendations.', 'error');
+            return;
+        }
+        const selected = Array.from(document.querySelectorAll('input[name="era"]:checked')).map(cb => cb.value);
+        localStorage.setItem('cm_era_filters', JSON.stringify(selected));
+        const m = minRatingValue();
+        if (m == null) localStorage.removeItem('cm_min_avg_rating');
+        else localStorage.setItem('cm_min_avg_rating', String(m));
+
+        const btn = document.getElementById('apply-filters-btn');
+        btn.disabled = true;
+        const body = {
+            movie_id: anchorMovie.movie_id,
+            era_filter: selected,
+            top_n: 24
+        };
+        if (m != null) body.min_avg_rating = m;
+        const res = await apiFetch('/api/recommend', 'POST', body);
+        btn.disabled = false;
+        if (!res.ok) {
+            const msg = await parseApiError(res, 'Could not get recommendations');
+            showToast(msg, 'error');
+            return;
+        }
+        const data = await res.json();
+        const movies = (data.movies != null) ? data.movies : data;
+        const meta = (data && data.meta) ? data.meta : {};
+        persistAnchor(anchorMovie);
+        sessionStorage.setItem('cm_discover_recommendations', JSON.stringify({
+            movies: Array.isArray(movies) ? movies : [],
+            anchorTitle: anchorMovie.title,
+            recommendationMeta: meta
+        }));
+        window.location.href = '/discover';
+    });
+});
+</script>
+{% endblock %}

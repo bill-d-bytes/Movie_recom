@@ -1,0 +1,101 @@
+{% extends "base_app.html" %}
+{% block title %}Profile - CineMatch{% endblock %}
+{% block app_content %}
+<main class="flex-grow w-full max-w-[1440px] mx-auto px-[5%] py-lg md:py-xl grid grid-cols-1 lg:grid-cols-12 gap-gutter">
+<div class="lg:col-span-12 mb-lg">
+<h1 class="font-headline-lg text-headline-lg text-on-background mb-unit">Profile Management</h1>
+<p class="font-body-md text-body-md text-on-surface-variant">Manage your account details and security settings.</p>
+</div>
+<div class="lg:col-span-4 flex flex-col gap-lg">
+<div class="bg-surface-container-high border border-surface-variant rounded-xl p-lg flex flex-col items-center justify-center relative overflow-hidden backdrop-blur-[20px]">
+<div class="w-32 h-32 rounded-full border-2 border-primary-container mb-md flex items-center justify-center bg-surface-container">
+<span class="material-symbols-outlined text-5xl text-on-surface-variant" aria-hidden="true">person</span>
+</div>
+<h2 id="profile-name-display" class="font-headline-md text-headline-md text-on-background">Loading...</h2>
+<p id="profile-email-display" class="font-body-md text-body-md text-on-surface-variant"></p>
+</div>
+</div>
+<div class="lg:col-span-8 flex flex-col gap-lg">
+<div class="bg-surface-container-high border border-surface-variant rounded-xl p-lg backdrop-blur-[20px]">
+<div class="flex items-center gap-sm mb-lg border-b border-surface-variant pb-sm">
+<span class="material-symbols-outlined text-on-background">person</span>
+<h3 class="font-headline-md text-headline-md text-on-background text-xl">Personal Information</h3>
+</div>
+<form id="profile-form" class="grid grid-cols-1 md:grid-cols-2 gap-md">
+<div class="col-span-1 md:col-span-2">
+<label class="block font-label-sm text-label-sm text-on-surface-variant mb-unit uppercase tracking-widest">Username (Read Only)</label>
+<input id="profile-form-name" class="w-full bg-surface-container border-b-2 border-surface-variant text-on-background font-body-lg text-body-lg px-0 py-sm focus:ring-0 focus:border-primary-container transition-colors placeholder-on-surface-variant/50 outline-none opacity-60" placeholder="Username" type="text" readonly/>
+</div>
+<div class="col-span-1 md:col-span-2">
+<label class="block font-label-sm text-label-sm text-on-surface-variant mb-unit uppercase tracking-widest">Email Address</label>
+<input id="profile-form-email" class="w-full bg-surface-container border-b-2 border-surface-variant text-on-background font-body-lg text-body-lg px-0 py-sm focus:ring-0 focus:border-primary-container transition-colors placeholder-on-surface-variant/50 outline-none" placeholder="Enter your email" type="email"/>
+</div>
+<div class="col-span-1">
+<label class="block font-label-sm text-label-sm text-on-surface-variant mb-unit uppercase tracking-widest">Location</label>
+<input id="profile-form-location" class="w-full bg-surface-container border-b-2 border-surface-variant text-on-background font-body-lg text-body-lg px-0 py-sm focus:ring-0 focus:border-primary-container transition-colors placeholder-on-surface-variant/50 outline-none" placeholder="City, State" type="text"/>
+</div>
+<div class="col-span-1">
+<label class="block font-label-sm text-label-sm text-on-surface-variant mb-unit uppercase tracking-widest">Birthdate</label>
+<input id="profile-form-dob" class="w-full bg-surface-container border-b-2 border-surface-variant text-on-background font-body-lg text-body-lg px-0 py-sm focus:ring-0 focus:border-primary-container transition-colors placeholder-on-surface-variant/50 outline-none [color-scheme:dark]" type="date"/>
+</div>
+<div class="col-span-1 md:col-span-2 mt-md flex justify-end">
+<button id="save-profile-btn" class="bg-primary-container text-white font-label-bold text-label-bold py-sm px-lg rounded-full hover:bg-primary-container/90 transition-colors shadow-lg shadow-primary-container/20" type="submit">Save Changes</button>
+</div>
+</form>
+</div>
+<div class="bg-surface-container-high border border-surface-variant rounded-xl p-lg backdrop-blur-[20px]">
+<div class="flex items-center gap-sm mb-lg border-b border-surface-variant pb-sm">
+<span class="material-symbols-outlined text-on-background">lock</span>
+<h3 class="font-headline-md text-headline-md text-on-background text-xl">Security Settings</h3>
+</div>
+<div class="flex flex-col gap-md">
+<div class="flex flex-col sm:flex-row justify-between sm:items-center p-md bg-surface-container rounded-lg border border-surface-variant/50">
+<div>
+<p class="font-label-bold text-label-bold text-on-background">Password</p>
+</div>
+<button type="button" class="mt-sm sm:mt-0 font-label-bold text-label-bold text-on-background border border-on-background/20 py-sm px-md rounded-full hover:bg-on-background/10 transition-colors self-start sm:self-auto">Update Password</button>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+{% endblock %}
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', async () => {
+    const res = await apiFetch('/api/profile');
+    if (res.ok) {
+        const data = await res.json();
+        document.getElementById('profile-name-display').textContent = data.username || 'User';
+        document.getElementById('profile-email-display').textContent = data.email || '';
+        document.getElementById('profile-form-name').value = data.username || '';
+        document.getElementById('profile-form-email').value = data.email || '';
+        document.getElementById('profile-form-location').value = data.location || '';
+        document.getElementById('profile-form-dob').value = data.dob || '';
+    }
+});
+
+document.getElementById('profile-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById('save-profile-btn');
+    btn.disabled = true;
+    btn.textContent = 'Saving...';
+    
+    const body = {
+        location: document.getElementById('profile-form-location').value,
+        dob: document.getElementById('profile-form-dob').value,
+        email: document.getElementById('profile-form-email').value
+    };
+    
+    const res = await apiFetch('/api/profile', 'PUT', body);
+    if (res.ok) {
+        showToast('Profile updated successfully', 'success');
+    } else {
+        showToast('Failed to update profile', 'error');
+    }
+    btn.disabled = false;
+    btn.textContent = 'Save Changes';
+});
+</script>
+{% endblock %}

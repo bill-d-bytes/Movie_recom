@@ -1,0 +1,139 @@
+{% extends "base_app.html" %}
+{% block title %}CineMatch - Preferences{% endblock %}
+{% block body_class %}bg-background text-on-surface min-h-screen flex flex-col font-['Be_Vietnam_Pro'] antialiased pb-20 md:pb-0 pt-20 selection:bg-primary-container selection:text-white{% endblock %}
+{% block head_extra %}
+<style>
+        input[type="number"]::-webkit-inner-spin-button,
+        input[type="number"]::-webkit-outer-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+        select option {
+            background-color: #201f1f;
+            color: #e5e2e1;
+            padding: 12px;
+        }
+    </style>
+{% endblock %}
+{% block app_content %}
+<main class="flex-grow flex flex-col items-center justify-center px-[5%] py-xxl md:pt-[120px] pb-[100px] w-full max-w-container-max mx-auto relative z-10">
+<div class="absolute top-1/4 left-1/2 -translate-x-1/2 w-[600px] h-[600px] bg-primary-container/10 rounded-full blur-[120px] pointer-events-none z-[-1]"></div>
+<div class="w-full max-w-3xl bg-surface-container-low/60 backdrop-blur-[20px] border border-surface-variant rounded-xl p-lg md:p-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)]">
+<header class="mb-xl text-center md:text-left">
+<h1 class="font-display-lg text-display-lg text-on-surface mb-sm">Tailor Your Screen</h1>
+<p class="font-body-lg text-body-lg text-on-surface-variant">Configure your demographic profile and select your preferred cinematic genres—these feed into <a href="/filters" class="text-primary-container font-label-bold hover:underline">Precision match</a> and similar titles on film pages.</p>
+</header>
+<form id="preferences-form" class="flex flex-col gap-xl">
+<section class="grid grid-cols-1 md:grid-cols-2 gap-md">
+<div class="flex flex-col gap-sm bg-surface-container p-md rounded-lg border border-transparent focus-within:border-primary-container transition-colors relative">
+<label class="font-label-bold text-label-bold text-on-surface-variant uppercase tracking-wider text-[10px]" for="age">Viewer Age</label>
+<input class="bg-transparent border-none outline-none font-body-lg text-body-lg text-on-surface p-0 placeholder:text-surface-variant focus:ring-0 w-full" id="age" max="120" min="13" name="age" placeholder="e.g. 28" type="number"/>
+<div class="absolute bottom-0 left-0 w-full h-[2px] bg-primary-container scale-x-0 origin-left transition-transform duration-300" style="transition-property: transform;"></div>
+</div>
+<div class="flex flex-col gap-sm bg-surface-container p-md rounded-lg border border-transparent focus-within:border-primary-container transition-colors relative">
+<label class="font-label-bold text-label-bold text-on-surface-variant uppercase tracking-wider text-[10px]" for="gender">Gender Identity</label>
+<select class="bg-transparent border-none outline-none font-body-lg text-body-lg text-on-surface p-0 focus:ring-0 w-full cursor-pointer appearance-none" id="gender" name="gender">
+<option class="bg-surface-container text-on-surface-variant" disabled="" selected="" value="">Select identity...</option>
+<option class="bg-surface-container text-on-surface" value="female">Female</option>
+<option class="bg-surface-container text-on-surface" value="male">Male</option>
+<option class="bg-surface-container text-on-surface" value="nonbinary">Non-binary</option>
+<option class="bg-surface-container text-on-surface" value="prefer_not">Prefer not to say</option>
+</select>
+<span class="material-symbols-outlined absolute right-md top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none">expand_more</span>
+</div>
+</section>
+<hr class="border-surface-variant border-t-2 opacity-50"/>
+<section class="flex flex-col gap-md">
+<div class="flex items-center justify-between">
+<h2 class="font-headline-md text-headline-md text-on-surface">Cinematic Palette</h2>
+<span class="font-label-sm text-label-sm text-on-surface-variant">Select 3 or more</span>
+</div>
+<div id="genre-container" class="flex flex-wrap gap-sm">
+</div>
+</section>
+<div class="mt-lg flex justify-end">
+<button class="w-full md:w-auto px-xxl py-md bg-primary-container text-white font-label-bold text-label-bold rounded-lg hover:bg-inverse-primary transition-colors shadow-[0_4px_20px_rgba(229,9,20,0.3)] hover:shadow-[0_4px_25px_rgba(229,9,20,0.5)] flex justify-center items-center gap-sm" type="submit">
+                        Save Preferences
+                        <span class="material-symbols-outlined">arrow_forward</span>
+</button>
+</div>
+</form>
+</div>
+</main>
+{% endblock %}
+{% block scripts %}
+<script>
+    const ALL_GENRES = [
+        "Action", "Adventure", "Animation", "Children's", "Comedy",
+        "Crime", "Documentary", "Drama", "Fantasy", "Film-Noir",
+        "Horror", "Musical", "Mystery", "Romance", "Sci-Fi",
+        "Thriller", "War", "Western"
+    ];
+    let selectedGenres = new Set();
+
+    document.addEventListener('DOMContentLoaded', async () => {
+        const container = document.getElementById('genre-container');
+        const renderChips = () => {
+            container.innerHTML = '';
+            ALL_GENRES.forEach(g => {
+                const isActive = selectedGenres.has(g);
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                if (isActive) {
+                    btn.className = 'px-md py-sm rounded-full bg-primary-container text-white font-label-bold text-label-bold cursor-pointer hover:bg-inverse-primary transition-all shadow-[0_0_15px_rgba(229,9,20,0.4)] border border-primary-container flex items-center gap-xs';
+                    btn.innerHTML = `${g} <span class="material-symbols-outlined text-[14px]">check</span>`;
+                } else {
+                    btn.className = 'px-md py-sm rounded-full bg-surface-container-high text-on-surface font-label-bold text-label-bold cursor-pointer hover:bg-surface-variant hover:text-white transition-colors border border-surface-variant hover:border-surface-bright';
+                    btn.textContent = g;
+                }
+                btn.onclick = () => {
+                    if (isActive) selectedGenres.delete(g);
+                    else selectedGenres.add(g);
+                    renderChips();
+                };
+                container.appendChild(btn);
+            });
+        };
+
+        const res = await apiFetch('/api/preferences');
+        if (res.ok) {
+            const data = await res.json();
+            if (data.age) document.getElementById('age').value = data.age;
+            if (data.gender) {
+                let gVal = data.gender;
+                if (gVal === 'M') gVal = 'male';
+                if (gVal === 'F') gVal = 'female';
+                document.getElementById('gender').value = gVal;
+            }
+            (data.preferred_genres || []).forEach(g => selectedGenres.add(g));
+        }
+        renderChips();
+    });
+
+    document.getElementById('preferences-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const btn = e.target.querySelector('button[type="submit"]');
+        btn.disabled = true;
+        btn.innerHTML = 'Saving... <span class="material-symbols-outlined animate-spin ml-xs text-[18px]">progress_activity</span>';
+        
+        let gVal = document.getElementById('gender').value;
+        if (gVal === 'male') gVal = 'M';
+        if (gVal === 'female') gVal = 'F';
+
+        const body = {
+            age: parseInt(document.getElementById('age').value) || null,
+            gender: gVal || null,
+            preferred_genres: Array.from(selectedGenres)
+        };
+        
+        const res = await apiFetch('/api/preferences', 'PUT', body);
+        if (res.ok) {
+            window.location.href = '/filters';
+        } else {
+            showToast('Failed to save preferences', 'error');
+            btn.disabled = false;
+            btn.innerHTML = 'Save Preferences <span class="material-symbols-outlined">arrow_forward</span>';
+        }
+    });
+    </script>
+{% endblock %}

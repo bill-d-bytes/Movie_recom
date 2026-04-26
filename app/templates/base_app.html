@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html class="dark" lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>{% block title %}CineMatch{% endblock %}</title>
+{% include '_design_head.html' %}
+{% block head_extra %}{% endblock %}
+</head>
+<body class="{% block body_class %}bg-background text-on-background min-h-screen flex flex-col font-body-md text-body-md pb-20 md:pb-0 pt-20 selection:bg-primary-container selection:text-white{% endblock %}">
+{% include 'partials/app_nav.html' %}
+<div id="cm-search-modal" class="hidden fixed inset-0 z-[100] flex items-start justify-center pt-16 md:pt-24 px-md" role="dialog" aria-modal="true" aria-labelledby="cm-search-modal-title">
+<div class="absolute inset-0 bg-black/70 backdrop-blur-sm" data-cm-search-backdrop></div>
+<div class="relative z-10 w-full max-w-lg">
+<div class="bg-surface-container-high border border-surface-variant rounded-xl p-lg shadow-2xl">
+<p id="cm-search-modal-title" class="font-label-bold text-label-bold text-on-surface mb-md">Search movies</p>
+<div class="relative">
+<span class="material-symbols-outlined absolute left-md top-1/2 -translate-y-1/2 text-on-surface-variant text-[20px] pointer-events-none">search</span>
+<input id="cm-global-movie-search" type="search" autocomplete="off" placeholder="Type at least 2 characters…" class="w-full bg-surface-container border border-surface-variant rounded-lg py-sm pl-[44px] pr-md text-on-surface font-body-md focus:outline-none focus:ring-2 focus:ring-primary-container/50"/>
+</div>
+<button type="button" data-cm-search-close class="mt-md text-label-sm font-label-sm text-on-surface-variant hover:text-primary-container transition-colors">Cancel</button>
+</div>
+</div>
+</div>
+{% block app_content %}{% endblock %}
+<script src="/static/js/api.js"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>
