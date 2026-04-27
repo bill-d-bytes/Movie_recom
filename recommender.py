@@ -25,7 +25,7 @@ import numpy as np
 import pandas as pd
 from scipy.sparse import csr_matrix
 from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
+from sklearn.metrics.pairwise import cosine_similarity, linear_kernel
 from sklearn.decomposition import TruncatedSVD
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error
@@ -36,7 +36,6 @@ from database import (
     get_movie_by_id,
     load_movies_df,
     load_ratings_df,
-    load_users_df,
 )
 
 
@@ -104,7 +103,8 @@ def nearest_ml1m_proxy_mid(anchor_row, movies_df, synthetic_base=None):
                 y_bonus = 0.15 * max(0.0, 1.0 - min(8, abs(int(y_u) - int(my))) / 8.0)
             except (TypeError, ValueError):
                 pass
-        s = 0.55 * j + 0.32 * t + y_bonus
+        # Favor genre overlap over title text (TMDb non‑Latin titles match poorly by string).
+        s = 0.62 * j + 0.22 * t + y_bonus
         if s > best_s:
             best_s, best_mid = s, mid
 
@@ -155,37 +155,52 @@ def _load(path: str):
 # ──────────────────────────────────────────────
 def build_content_model(movies_df: pd.DataFrame):
     """
-    Build TF-IDF on 'genres + year' and compute cosine similarity.
+    Build TF-IDF on genres + title keywords (no year) and compute cosine similarity.
+    Year is intentionally excluded: it has very high IDF on large catalogs and would
+    cluster movies by release year instead of by genre/theme.
     Saves: tfidf_matrix.pkl, cosine_sim.pkl, movie_indices.pkl
     """
     print("\n📐 Building content-based model…")
 
-    # Feature string: replace pipe with space, append year
     def make_features(row):
-        genres = row['genres'].replace('|', ' ')
-        year   = str(row['year']) if pd.notna(row['year']) else ''
-        return f"{genres} {year}"
+        # Genres: "Action Crime Thriller" (pipe → space)
+        genres = (row['genres'] or '').replace('|', ' ')
+        # Title keywords: strip trailing "(YYYY)" then tokenize
+        raw_title = re.sub(r'\s*\(\d{4}\)\s*$', '', str(row['title'] or ''))
+        # Repeat genres 3× so genre similarity outweighs title word overlap
+        return f"{genres} {genres} {genres} {raw_title}"
 
     movies_df = movies_df.copy()
     movies_df['features'] = movies_df.apply(make_features, axis=1)
 
-    # TF-IDF
+    # TF-IDF — no year token, so genre terms dominate similarity scoring
     tfidf = TfidfVectorizer(max_features=5000, stop_words='english')
     tfidf_matrix = tfidf.fit_transform(movies_df['features'])
     print(f"   TF-IDF matrix: {tfidf_matrix.shape}")
 
-    # Compute cosine similarity (dense — ~3900×3900 ≈ 120 MB, acceptable)
-    cosine_sim = cosine_similarity(tfidf_matrix, tfidf_matrix)
-    print(f"   Cosine sim matrix: {cosine_sim.shape}")
-
-    # movie_id → index mapping
+    n_movies = len(movies_df)
+    use_sparse_content = Config.DATASET_USE_25M or n_movies > 12_000
     movie_indices = pd.Series(movies_df.index, index=movies_df['movie_id'])
 
     _save(tfidf_matrix, Config.TFIDF_PATH)
-    _save(cosine_sim,   Config.COSINE_SIM_PATH)
     _save(movie_indices, Config.MOVIE_IDX_PATH)
+    if use_sparse_content:
+        print(
+            "   Sparse content mode: skipping dense cosine matrix "
+            f"(query-time similarity for {n_movies:,} titles)."
+        )
+        if os.path.exists(Config.COSINE_SIM_PATH):
+            try:
+                os.remove(Config.COSINE_SIM_PATH)
+            except OSError:
+                pass
+    else:
+        cosine_sim = cosine_similarity(tfidf_matrix, tfidf_matrix)
+        print(f"   Cosine sim matrix: {cosine_sim.shape}")
+        _save(cosine_sim, Config.COSINE_SIM_PATH)
+
     print("✅ Content model saved.")
-    return cosine_sim, movie_indices
+    return None if use_sparse_content else True, movie_indices
 
 
 def _content_pos_to_mid_array(movie_indices: pd.Series, n: int) -> np.ndarray:
@@ -208,29 +223,54 @@ def get_content_scores(
     movie_indices,
     pos_to_mid: np.ndarray,
     top_n=50,
+    tfidf_matrix=None,
 ):
     """Return Series of {movie_id: content_score} for top_n similar movies."""
     if movie_id not in movie_indices.index:
         return pd.Series(dtype=float)
-    n = int(cosine_sim.shape[0])
+    idx = int(movie_indices[movie_id])
+
+    if cosine_sim is not None:
+        n = int(cosine_sim.shape[0])
+        if pos_to_mid is None or len(pos_to_mid) < n:
+            pos_to_mid = _content_pos_to_mid_array(movie_indices, n)
+        if idx < 0 or idx >= n:
+            return pd.Series(dtype=float)
+        sim_scores = list(enumerate(cosine_sim[idx]))
+        sim_scores = sorted(sim_scores, key=lambda x: x[1], reverse=True)[1 : top_n + 1]
+        movie_ids, scores = [], []
+        for row_idx, sc in sim_scores:
+            p = int(row_idx)
+            if p < 0 or p >= n:
+                continue
+            mid = int(pos_to_mid[p])
+            if mid < 0:
+                continue
+            movie_ids.append(mid)
+            scores.append(sc)
+        return pd.Series(scores, index=movie_ids)
+
+    if tfidf_matrix is None:
+        return pd.Series(dtype=float)
+    n = int(tfidf_matrix.shape[0])
     if pos_to_mid is None or len(pos_to_mid) < n:
         pos_to_mid = _content_pos_to_mid_array(movie_indices, n)
-    idx = int(movie_indices[movie_id])
     if idx < 0 or idx >= n:
         return pd.Series(dtype=float)
-    sim_scores = list(enumerate(cosine_sim[idx]))
-    sim_scores = sorted(sim_scores, key=lambda x: x[1], reverse=True)[1:top_n+1]
-    movie_ids, scores = [], []
-    for row_idx, sc in sim_scores:
-        p = int(row_idx)
-        if 0 > p or p >= n:
+    sims = linear_kernel(tfidf_matrix[idx : idx + 1], tfidf_matrix).ravel()
+    pairs = []
+    for j, sc in enumerate(sims):
+        if j == idx:
             continue
-        mid = int(pos_to_mid[p])
+        mid = int(pos_to_mid[j])
         if mid < 0:
             continue
-        movie_ids.append(mid)
-        scores.append(sc)
-    return pd.Series(scores, index=movie_ids)
+        pairs.append((mid, float(sc)))
+    pairs.sort(key=lambda x: -x[1])
+    pairs = pairs[:top_n]
+    if not pairs:
+        return pd.Series(dtype=float)
+    return pd.Series([p[1] for p in pairs], index=[p[0] for p in pairs])
 
 
 # ──────────────────────────────────────────────
@@ -238,56 +278,103 @@ def get_content_scores(
 # ──────────────────────────────────────────────
 def build_collab_model(ratings_df, movies_df):
     """
-    Build Truncated SVD on the user-item rating matrix.
-    Saves: svd_model.pkl, user_item_matrix.pkl, predicted_ratings.pkl
-    Also prints RMSE on 20% test split.
+    TruncatedSVD on a sparse user×movie rating matrix.
+    Saves collab_mappings.pkl (factors + seen sets). Does not materialize a dense
+    predicted matrix (infeasible at MovieLens 25M scale).
     """
-    print("\n🤝 Building collaborative filtering model (SVD)…")
+    print("\n🤝 Building collaborative filtering model (SVD, sparse)…")
 
-    # Build user-item pivot (sparse)
-    print("   Building user-item matrix (6040 × 3883)…")
-    user_item = ratings_df.pivot_table(
-        index='user_id', columns='movie_id', values='rating', fill_value=0
+    u_ids, u_inv = np.unique(ratings_df["user_id"].values, return_inverse=True)
+    m_ids, m_inv = np.unique(ratings_df["movie_id"].values, return_inverse=True)
+    n_u, n_m = len(u_ids), len(m_ids)
+    print(f"   User-item matrix: {n_u:,} × {n_m:,} ({len(ratings_df):,} ratings)…")
+
+    data = ratings_df["rating"].values.astype(np.float32, copy=False)
+    user_item_sparse = csr_matrix((data, (u_inv, m_inv)), shape=(n_u, n_m))
+
+    svd = TruncatedSVD(
+        n_components=50, random_state=42, algorithm="randomized"
     )
-    user_item_sparse = csr_matrix(user_item.values)
-
-    # SVD
-    svd = TruncatedSVD(n_components=50, random_state=42)
-    svd.fit(user_item_sparse)
-    predicted = svd.inverse_transform(svd.transform(user_item_sparse))
-    predicted_df = pd.DataFrame(predicted,
-                                index=user_item.index,
-                                columns=user_item.columns)
+    U = svd.fit_transform(user_item_sparse)
     print(f"   Explained variance ratio sum: {svd.explained_variance_ratio_.sum():.3f}")
 
-    # RMSE evaluation on a sample
     print("   Evaluating RMSE on 20% holdout sample…")
     sample = ratings_df.sample(n=min(50_000, len(ratings_df)), random_state=42)
-    train, test = train_test_split(sample, test_size=0.2, random_state=42)
+    _, test = train_test_split(sample, test_size=0.2, random_state=42)
+    user_row = pd.Series(np.arange(n_u, dtype=np.int32), index=u_ids)
+    movie_col = pd.Series(np.arange(n_m, dtype=np.int32), index=m_ids)
     y_true, y_pred = [], []
-    for row in test.itertuples():
-        uid, mid = row.user_id, row.movie_id
-        if uid in predicted_df.index and mid in predicted_df.columns:
-            y_true.append(row.rating)
-            y_pred.append(predicted_df.loc[uid, mid])
+    for row in test.itertuples(index=False):
+        ui = user_row.get(row.user_id)
+        mj = movie_col.get(row.movie_id)
+        if ui is None or mj is None:
+            continue
+        pred = float(U[int(ui)].dot(svd.components_[:, int(mj)]))
+        y_true.append(float(row.rating))
+        y_pred.append(pred)
     if y_true:
         rmse = mean_squared_error(y_true, y_pred) ** 0.5
         print(f"   ✅ RMSE on test split: {rmse:.4f} (target < 1.8)")
 
-    _save(svd,          Config.SVD_MODEL_PATH)
-    _save(user_item,    Config.USER_ITEM_PATH)
-    _save(predicted_df, Config.PREDICTED_PATH)
-    print("✅ Collaborative model saved.")
-    return predicted_df, user_item
+    print("   Building per-user seen sets…")
+    seen_by_user = {
+        int(uid): set(grp["movie_id"].astype(int).values)
+        for uid, grp in ratings_df.groupby("user_id", sort=False)
+    }
+
+    bundle = {
+        "svd": svd,
+        "U": U.astype(np.float32, copy=False),
+        "user_ids": u_ids.astype(np.int32, copy=False),
+        "movie_ids": m_ids.astype(np.int32, copy=False),
+        "seen_by_user": seen_by_user,
+    }
+    _save(bundle, Config.COLLAB_MAPPINGS_PATH)
+
+    for p in (Config.PREDICTED_PATH, Config.USER_ITEM_PATH, Config.SVD_MODEL_PATH):
+        if os.path.exists(p):
+            try:
+                os.remove(p)
+            except OSError:
+                pass
+
+    print("✅ Collaborative model saved (collab_mappings.pkl).")
+    return bundle
 
 
-def get_collab_scores(user_id, predicted_df,
-                      user_item, top_n=50):
-    """Return Series of {movie_id: predicted_rating} for unseen movies."""
+def get_collab_scores(
+    user_id,
+    predicted_df,
+    user_item,
+    top_n=50,
+    collab_bundle=None,
+):
+    """Return Series of {movie_id: normalized score} for unseen movies."""
+    if collab_bundle is not None:
+        seen = collab_bundle["seen_by_user"].get(int(user_id))
+        if seen is None:
+            return pd.Series(dtype=float)
+        u_arr = collab_bundle["user_ids"]
+        hits = np.where(u_arr == int(user_id))[0]
+        if len(hits) == 0:
+            return pd.Series(dtype=float)
+        row_idx = int(hits[0])
+        Urow = collab_bundle["U"][row_idx]
+        pred = Urow @ collab_bundle["svd"].components_
+        movie_ids = collab_bundle["movie_ids"]
+        s = pd.Series(pred, index=movie_ids.astype(int))
+        s = s.drop(index=list(seen), errors="ignore")
+        if s.empty:
+            return pd.Series(dtype=float)
+        preds_norm = (s - s.min()) / (s.max() - s.min() + 1e-9)
+        return preds_norm.nlargest(top_n)
+
+    if predicted_df is None or user_item is None:
+        return pd.Series(dtype=float)
     if user_id not in predicted_df.index:
         return pd.Series(dtype=float)
     seen = set(user_item.loc[user_id][user_item.loc[user_id] > 0].index)
-    preds = predicted_df.loc[user_id].drop(index=seen, errors='ignore')
+    preds = predicted_df.loc[user_id].drop(index=seen, errors="ignore")
     preds_norm = (preds - preds.min()) / (preds.max() - preds.min() + 1e-9)
     return preds_norm.nlargest(top_n)
 
@@ -361,6 +448,84 @@ def get_personalization_scores(user_profile, movies_df):
     return series
 
 
+def _movie_genre_set(genres) -> set:
+    if not genres:
+        return set()
+    out = set()
+    for g in genres:
+        if g is None:
+            continue
+        s = str(g).strip()
+        if s:
+            out.add(s)
+    return out
+
+
+def _genres_pipe_to_set(genres) -> set:
+    """DB/ml-1m pipe string 'A|B' or iterable → genre set."""
+    if not genres:
+        return set()
+    if isinstance(genres, str):
+        return {x.strip() for x in genres.split("|") if x.strip()}
+    return _movie_genre_set(genres)
+
+
+def _max_genre_jaccard_overlap(genres_set: set, picked_sets: list) -> float:
+    if not picked_sets or not genres_set:
+        return 0.0
+    best = 0.0
+    for ps in picked_sets:
+        u = genres_set | ps
+        inter = genres_set & ps
+        j = len(inter) / max(len(u), 1)
+        if j > best:
+            best = j
+    return best
+
+
+def diversify_ranked_results(rows: list, top_n: int, genre_penalty: float = 0.14) -> list:
+    """
+    Greedy re-ranking on an already score-sorted list: keep strong matches but
+    penalize titles whose genres closely overlap films already chosen, so rows
+    feel less repetitive than pure top-N by hybrid_score alone.
+    """
+    if not rows or top_n <= 0:
+        return []
+    pool = list(rows)
+    picked = []
+    picked_ids = set()
+    picked_sets = []
+
+    while pool and len(picked) < top_n:
+        best_i = -1
+        best_adj = -1e9
+        for i, r in enumerate(pool):
+            gset = _movie_genre_set(r.get("genres"))
+            overlap = _max_genre_jaccard_overlap(gset, picked_sets)
+            adj = float(r.get("hybrid_score", 0)) - genre_penalty * overlap
+            if adj > best_adj:
+                best_adj = adj
+                best_i = i
+        if best_i < 0:
+            break
+        take = pool.pop(best_i)
+        picked.append(take)
+        picked_ids.add(int(take["movie_id"]))
+        picked_sets.append(_movie_genre_set(take.get("genres")))
+
+    if len(picked) < top_n:
+        for r in rows:
+            if len(picked) >= top_n:
+                break
+            mid = int(r["movie_id"])
+            if mid in picked_ids:
+                continue
+            picked.append(r)
+            picked_ids.add(mid)
+
+    return picked[:top_n]
+
+
 # ──────────────────────────────────────────────
 # 4. HYBRID ENGINE
 # ──────────────────────────────────────────────
@@ -372,9 +537,11 @@ class RecommendationEngine:
 
     def __init__(self):
         self.cosine_sim   = None
+        self.tfidf_matrix = None
         self.movie_indices = None
         self.predicted_df  = None
         self.user_item     = None
+        self._collab_bundle = None
         self.movies_df     = None
         self._content_pos_to_mid: Optional[np.ndarray] = None
         self._loaded       = False
@@ -384,12 +551,36 @@ class RecommendationEngine:
         if self._loaded:
             return
         print("🔄 Loading recommendation models…")
-        self.cosine_sim    = _load(Config.COSINE_SIM_PATH)
         self.movie_indices = _load(Config.MOVIE_IDX_PATH)
-        self.predicted_df  = _load(Config.PREDICTED_PATH)
-        self.user_item     = _load(Config.USER_ITEM_PATH)
-        self.movies_df     = load_movies_df()
-        n = int(self.cosine_sim.shape[0])
+        self.tfidf_matrix = _load(Config.TFIDF_PATH)
+        self.cosine_sim = (
+            _load(Config.COSINE_SIM_PATH)
+            if os.path.exists(Config.COSINE_SIM_PATH)
+            else None
+        )
+        if self.cosine_sim is None:
+            print("   Content: query-time cosine via TF-IDF (large catalog).")
+        if os.path.exists(Config.COLLAB_MAPPINGS_PATH):
+            self._collab_bundle = _load(Config.COLLAB_MAPPINGS_PATH)
+            self.predicted_df = None
+            self.user_item = None
+        else:
+            self._collab_bundle = None
+            self.predicted_df = (
+                _load(Config.PREDICTED_PATH)
+                if os.path.exists(Config.PREDICTED_PATH)
+                else None
+            )
+            self.user_item = (
+                _load(Config.USER_ITEM_PATH)
+                if os.path.exists(Config.USER_ITEM_PATH)
+                else None
+            )
+        self.movies_df = load_movies_df()
+        if self.cosine_sim is not None:
+            n = int(self.cosine_sim.shape[0])
+        else:
+            n = int(self.tfidf_matrix.shape[0])
         self._content_pos_to_mid = _content_pos_to_mid_array(self.movie_indices, n)
         self._loaded = True
         print("✅ Models loaded.")
@@ -410,21 +601,31 @@ class RecommendationEngine:
         recommend_meta = None
         orig_id = int(movie_id)
         eff_id = orig_id
+        anchor_row = get_movie_by_id(orig_id)
         if eff_id not in self.movie_indices.index:
-            ar = get_movie_by_id(eff_id)
-            if not ar:
+            if not anchor_row:
                 from database import get_trending_movies
                 return get_trending_movies(top_n), {
                     "fallback": "unknown_anchor", "user_anchor_id": orig_id,
                 }
-            eff_id, recommend_meta = nearest_ml1m_proxy_mid(ar, self.movies_df)
+            eff_id, recommend_meta = nearest_ml1m_proxy_mid(anchor_row, self.movies_df)
             if recommend_meta:
                 recommend_meta["recommendation_mode"] = "tmdb_proxy"
 
-        # 1. Get individual scores (ml-1m id only)
+        anchor_g = _genres_pipe_to_set((anchor_row or {}).get("genres"))
+        profile_for_persona = dict(user_profile)
+        if recommend_meta and recommend_meta.get("used_proxy") and anchor_g:
+            merged = set(profile_for_persona.get("preferred_genres") or []) | anchor_g
+            profile_for_persona["preferred_genres"] = list(merged)
+
+        # 1. Content similarity (MovieLens movie_id index)
         content_scores = get_content_scores(
-            eff_id, self.cosine_sim, self.movie_indices,
-            self._content_pos_to_mid, top_n=100
+            eff_id,
+            self.cosine_sim,
+            self.movie_indices,
+            self._content_pos_to_mid,
+            top_n=100,
+            tfidf_matrix=self.tfidf_matrix,
         )
 
         # Determine cold-start
@@ -432,16 +633,31 @@ class RecommendationEngine:
         rating_count = get_user_rating_count(user_id)
         is_cold_start = rating_count < Config.COLD_START_THRESHOLD
 
-        if is_cold_start:
+        used_proxy = bool(recommend_meta and recommend_meta.get("used_proxy"))
+        if used_proxy:
+            # Proxy similarity is noisy for non‑Western anchors; lean on taste + anchor genres.
+            if is_cold_start:
+                w_c, w_collab, w_p = 0.52, 0.0, 0.48
+            else:
+                w_c, w_collab, w_p = 0.42, 0.18, 0.40
+        elif is_cold_start:
             w_c, w_collab, w_p = 0.8, 0.0, 0.2
         else:
             w_c, w_collab, w_p = 0.5, 0.3, 0.2
 
-        collab_scores = get_collab_scores(
-            user_id, self.predicted_df, self.user_item, top_n=100
-        ) if not is_cold_start else pd.Series(dtype=float)
+        collab_scores = (
+            get_collab_scores(
+                user_id,
+                self.predicted_df,
+                self.user_item,
+                top_n=100,
+                collab_bundle=self._collab_bundle,
+            )
+            if not is_cold_start
+            else pd.Series(dtype=float)
+        )
 
-        persona_scores = get_personalization_scores(user_profile, self.movies_df)
+        persona_scores = get_personalization_scores(profile_for_persona, self.movies_df)
 
         # 2. Build candidate pool (union of content + collab top-100)
         candidates = set(content_scores.index) | set(collab_scores.index)
@@ -456,51 +672,66 @@ class RecommendationEngine:
         if min_avg_rating is not None and min_avg_rating > 0:
             avgs = get_avg_ratings_for_movies(candidates)
 
-        results = []
-        for mid in candidates:
-            c_score  = float(content_scores.get(mid, 0))
-            co_score = float(collab_scores.get(mid, 0))
-            p_score  = float(persona_scores.get(mid, 0))
-            hybrid   = w_c * c_score + w_collab * co_score + w_p * p_score
+        def collect_scored_rows(apply_era_filter: bool):
+            """apply_era_filter=False skips era gate (used when ML catalog years never match UI eras)."""
+            rows_out = []
+            for mid in candidates:
+                c_score = float(content_scores.get(mid, 0))
+                co_score = float(collab_scores.get(mid, 0))
+                p_score = float(persona_scores.get(mid, 0))
+                hybrid = w_c * c_score + w_collab * co_score + w_p * p_score
 
-            if min_avg_rating is not None and min_avg_rating > 0:
-                ar = avgs.get(int(mid))
-                if ar is not None and ar < min_avg_rating:
+                if min_avg_rating is not None and min_avg_rating > 0:
+                    mean_rating = avgs.get(int(mid))
+                    if mean_rating is not None and mean_rating < min_avg_rating:
+                        continue
+
+                if era_filter and apply_era_filter:
+                    movie_row = self.movies_df[self.movies_df['movie_id'] == mid]
+                    if not movie_row.empty:
+                        year = movie_row.iloc[0]['year']
+                        if pd.notna(year):
+                            in_era = any(
+                                ERA_YEAR_RANGES[e][0] <= year <= ERA_YEAR_RANGES[e][1]
+                                for e in era_filter if e in ERA_YEAR_RANGES
+                            )
+                            if not in_era:
+                                continue
+
+                row = self.movies_df[self.movies_df['movie_id'] == mid]
+                if row.empty:
                     continue
+                row = row.iloc[0]
 
-            # Era filter (applied post-scoring)
-            if era_filter:
-                movie_row = self.movies_df[self.movies_df['movie_id'] == mid]
-                if not movie_row.empty:
-                    year = movie_row.iloc[0]['year']
-                    if pd.notna(year):
-                        in_era = any(
-                            ERA_YEAR_RANGES[e][0] <= year <= ERA_YEAR_RANGES[e][1]
-                            for e in era_filter if e in ERA_YEAR_RANGES
-                        )
-                        if not in_era:
-                            continue
+                cand_g = _genres_pipe_to_set(row.get("genres"))
+                if anchor_g:
+                    u_ag = anchor_g | cand_g
+                    hybrid += 0.14 * (len(anchor_g & cand_g) / max(len(u_ag), 1))
 
-            # Get movie info
-            row = self.movies_df[self.movies_df['movie_id'] == mid]
-            if row.empty:
-                continue
-            row = row.iloc[0]
+                hybrid = min(hybrid, 1.25)
+                rows_out.append({
+                    'movie_id':       int(mid),
+                    'title':          row['title'],
+                    'genres':         row['genres'].split('|'),
+                    'year':           int(row['year']) if pd.notna(row['year']) else None,
+                    'hybrid_score':   round(hybrid, 4),
+                    'content_score':  round(c_score, 4),
+                    'collab_score':   round(co_score, 4),
+                    'persona_score':  round(p_score, 4),
+                    'is_cold_start':  is_cold_start,
+                })
+            return rows_out
 
-            results.append({
-                'movie_id':       int(mid),
-                'title':          row['title'],
-                'genres':         row['genres'].split('|'),
-                'year':           int(row['year']) if pd.notna(row['year']) else None,
-                'hybrid_score':   round(hybrid, 4),
-                'content_score':  round(c_score, 4),
-                'collab_score':   round(co_score, 4),
-                'persona_score':  round(p_score, 4),
-                'is_cold_start':  is_cold_start,
-            })
+        results = collect_scored_rows(True)
+        # Era filter is always respected — if nothing matched (e.g. "Modern" on ML-1M which
+        # only has movies up to ~2000), results stays empty and the app-layer blends
+        # (_merge_tmdb_popular / _merge_regional) fill those slots with modern content.
 
         results.sort(key=lambda x: x['hybrid_score'], reverse=True)
-        return results[:top_n], recommend_meta
+        skip_ids = {int(orig_id), int(eff_id)}
+        results = [r for r in results if int(r['movie_id']) not in skip_ids]
+        results = diversify_ranked_results(results, top_n)
+        return results, recommend_meta
 
 
 # ──────────────────────────────────────────────

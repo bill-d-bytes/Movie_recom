@@ -12,7 +12,7 @@ from flask import (Flask, render_template, request, session,
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_caching import Cache
 
-from config import Config
+from config import Config, ml_models_are_built
 from database import (get_db, create_tables, seed_movies, seed_ratings, ensure_movies_migrated,
                       load_movies_df, load_ratings_df, find_catalog_match_for_external_title,
                       get_movie_by_id, search_movies, get_trending_movies, get_avg_ratings_for_movies,
@@ -20,6 +20,7 @@ from database import (get_db, create_tables, seed_movies, seed_ratings, ensure_m
 from recommender import RecommendationEngine, ERA_YEAR_RANGES
 from tmdb import (
     discover_tmdb_movies_modern,
+    discover_tmdb_movies_by_language,
     enrich_movie_dict,
     fetch_tmdb_movie_for_import,
     fetch_tmdb_similar_and_recommendations,
@@ -56,8 +57,7 @@ def init_app():
     seed_ratings(conn, ratings_df)
     conn.close()
 
-    # Pre-load ML models if they exist
-    if os.path.exists(Config.COSINE_SIM_PATH):
+    if ml_models_are_built():
         engine.load()
     else:
         print("⚠️  ML models not found. Run: python recommender.py --build")
@@ -164,16 +164,55 @@ def _sanitize_for_json(obj):
     return str(obj) if obj is not None else None
 
 
+# ML-1M / MovieLens genre labels → TMDb genre IDs
+# Used when calling TMDb discover so results match the user's genre preferences.
+_ML_GENRE_TO_TMDB_ID = {
+    "action":      28,
+    "adventure":   12,
+    "animation":   16,
+    "children's":  10751,
+    "children":    10751,
+    "comedy":      35,
+    "crime":       80,
+    "documentary": 99,
+    "drama":       18,
+    "fantasy":     14,
+    "film-noir":   53,   # closest TMDb equivalent: Thriller
+    "horror":      27,
+    "musical":     10402,
+    "mystery":     9648,
+    "romance":     10749,
+    "sci-fi":      878,
+    "science fiction": 878,
+    "thriller":    53,
+    "war":         10752,
+    "western":     37,
+}
+
+
+def _genres_to_tmdb_ids(genres: list) -> list:
+    """Map a list of ML-style genre strings to TMDb genre IDs (deduped)."""
+    seen, out = set(), []
+    for g in (genres or []):
+        tid = _ML_GENRE_TO_TMDB_ID.get((g or "").strip().lower())
+        if tid and tid not in seen:
+            seen.add(tid)
+            out.append(tid)
+    return out
+
+
 def _merge_latest_into_recommendations(
     hybrid_rows,
     top_n,
     anchor_ids,
     era_filter,
     min_avg_f,
+    exclude_tmdb_supplements_from_latest: bool = False,
 ):
     """
     Mix in a few of the newest (by release year) catalog titles, respecting the same
     era and min rating constraints as the hybrid list. Puts rec_source: 'latest' on those.
+    If exclude_tmdb_supplements_from_latest, only ml1m rows qualify (no recent TMDb-only imports).
     """
     L = getattr(Config, "LATEST_IN_RECOMMENDATION", 0) or 0
     if L <= 0 or top_n <= 0:
@@ -199,7 +238,11 @@ def _merge_latest_into_recommendations(
         seen.add(mid)
         out.append(r)
 
-    pool = get_latest_movies(limit=max(50, top_n * 8), min_year=Config.LATEST_MIN_YEAR)
+    pool = get_latest_movies(
+        limit=max(50, top_n * 8),
+        min_year=Config.LATEST_MIN_YEAR,
+        exclude_tmdb_supplements=exclude_tmdb_supplements_from_latest,
+    )
     avgs = {}
     if min_avg_f is not None and min_avg_f > 0 and pool:
         avgs = get_avg_ratings_for_movies([int(p["movie_id"]) for p in pool])
@@ -269,6 +312,292 @@ def _merge_latest_into_recommendations(
     return out[:top_n], n_added
 
 
+def _merge_regional_into_recommendations(
+    rows,
+    top_n,
+    anchor_ids,
+    era_filter,
+    min_avg_f,
+    user_profile=None,
+    anchor_genres=None,
+):
+    """
+    Replace up to REGIONAL_IN_RECOMMENDATION trailing slots with popular TMDb discovers
+    in original languages hi / te / ta (Bollywood, Telugu, Tamil), imported into the catalog.
+    When user_profile / anchor_genres are supplied, genre-filters the TMDb discover call.
+    """
+    R = getattr(Config, "REGIONAL_IN_RECOMMENDATION", 0) or 0
+    if R <= 0 or top_n <= 0 or not (Config.TMDB_API_KEY or "").strip():
+        return (rows or [])[:top_n], 0
+
+    rows = list(rows or [])
+
+    regional_quota = min(R, top_n)
+    keep_n = max(0, top_n - regional_quota)
+    base = rows[:keep_n]
+    anchor_ids = {int(x) for x in (anchor_ids or [])}
+    seen = {int(r["movie_id"]) for r in base} | anchor_ids
+
+    ef = era_filter or []
+
+    def _year_in_filter(y):
+        if y is None:
+            return False
+        if not ef:
+            return True
+        try:
+            yi = int(y)
+        except (TypeError, ValueError):
+            return False
+        return any(
+            ERA_YEAR_RANGES[e][0] <= yi <= ERA_YEAR_RANGES[e][1]
+            for e in ef
+            if e in ERA_YEAR_RANGES
+        )
+
+    min_regional_year = getattr(Config, "REGIONAL_MIN_YEAR", 2000)
+    langs = getattr(Config, "REGIONAL_ORIGINAL_LANGUAGES", ("hi", "te", "ta"))
+
+    # Build TMDb genre filter from anchor + user preferences
+    genre_pool = list(anchor_genres or [])
+    if user_profile:
+        genre_pool += list(user_profile.get("preferred_genres") or [])
+    regional_genre_ids = _genres_to_tmdb_ids(genre_pool) or None
+
+    per_lang = []
+    for lang in langs:
+        items, _, err = discover_tmdb_movies_by_language(
+            lang, min_year=min_regional_year, page=1,
+            genre_ids=regional_genre_ids,
+        )
+        if err or not items:
+            # Fallback: no genre filter if genre-filtered call found nothing
+            items, _, err = discover_tmdb_movies_by_language(
+                lang, min_year=min_regional_year, page=1
+            )
+        if err or not items:
+            continue
+        per_lang.append([(lang, it) for it in items[:12]])
+
+    candidates = []
+    idx = 0
+    while True:
+        progressed = False
+        for lst in per_lang:
+            if idx < len(lst):
+                candidates.append(lst[idx])
+                progressed = True
+        if not progressed:
+            break
+        idx += 1
+
+    regional_rows = []
+    for lang, it in candidates:
+        if len(regional_rows) >= regional_quota:
+            break
+        tid = int(it["tmdb_id"])
+        row_db = get_movie_by_tmdb_id(tid)
+        if row_db:
+            mid = int(row_db["movie_id"])
+            y = row_db.get("year")
+            if not _year_in_filter(y):
+                continue
+            title = row_db["title"]
+            g = row_db.get("genres", "") or "Drama"
+        else:
+            full, err = fetch_tmdb_movie_for_import(tid)
+            if err or not full:
+                continue
+            y = full.get("year")
+            if not _year_in_filter(y):
+                continue
+            mid = int(
+                insert_tmdb_supplement(
+                    full["tmdb_id"],
+                    full["title"],
+                    full["year"],
+                    full["genres_pipe"],
+                    full["poster_url"],
+                    full["overview"],
+                )
+            )
+            title = full["title"]
+            g = full.get("genres_pipe") or "Drama"
+
+        if mid in seen:
+            continue
+        if min_avg_f is not None and min_avg_f > 0:
+            avgs = get_avg_ratings_for_movies([mid])
+            ar = avgs.get(mid)
+            if ar is not None and ar < min_avg_f:
+                continue
+
+        seen.add(mid)
+        genres = (
+            [x.strip() for x in g.split("|") if x.strip()]
+            if isinstance(g, str)
+            else (g or ["Drama"])
+        ) or ["Drama"]
+        y_out = _safe_year_value(y)
+        regional_rows.append(
+            {
+                "movie_id": mid,
+                "title": title,
+                "genres": genres,
+                "year": y_out,
+                "hybrid_score": 0.0,
+                "content_score": 0.0,
+                "collab_score": 0.0,
+                "persona_score": 0.0,
+                "is_cold_start": False,
+                "rec_source": "regional_in",
+                "regional_lang": lang,
+            }
+        )
+
+    out = list(base) + regional_rows
+    seen = {int(r["movie_id"]) for r in out} | anchor_ids
+    for r in rows:
+        if len(out) >= top_n:
+            break
+        mid = int(r["movie_id"])
+        if mid in seen:
+            continue
+        seen.add(mid)
+        out.append(r)
+
+    return out[:top_n], len(regional_rows)
+
+
+def _merge_tmdb_popular_into_recommendations(
+    rows,
+    top_n,
+    anchor_ids,
+    era_filter,
+    min_avg_f,
+    user_profile=None,
+    anchor_genres=None,
+):
+    """
+    On ML-1M only: fill remaining slots with popular TMDb movies matching the era_filter
+    AND the user's genre preferences (+ anchor movie genres).
+    Triggered when the hybrid engine returned sparse/no results because ML-1M (max ~2000)
+    cannot serve modern/00s-era queries.  Skipped entirely when running ML-25M.
+    """
+    if Config.DATASET_USE_25M:
+        return (rows or [])[:top_n], 0
+    if not (Config.TMDB_API_KEY or "").strip():
+        return (rows or [])[:top_n], 0
+
+    ef = era_filter or []
+    if not ef:
+        return (rows or [])[:top_n], 0
+
+    # Compute the year window from the requested era chips
+    valid_eras = [e for e in ef if e in ERA_YEAR_RANGES]
+    if not valid_eras:
+        return (rows or [])[:top_n], 0
+    era_min = min(ERA_YEAR_RANGES[e][0] for e in valid_eras)
+    era_max = max(ERA_YEAR_RANGES[e][1] for e in valid_eras)
+
+    # Only fill for eras that are beyond what ML-1M carries (~2000)
+    if era_min < 2001:
+        return (rows or [])[:top_n], 0
+
+    rows = list(rows or [])
+    needed = top_n - len(rows)
+    if needed <= 0:
+        return rows[:top_n], 0
+
+    # Build TMDb genre filter from user preferred genres + anchor movie genres
+    genre_pool = list(anchor_genres or [])
+    if user_profile:
+        genre_pool += list(user_profile.get("preferred_genres") or [])
+    tmdb_genre_ids = _genres_to_tmdb_ids(genre_pool) or None
+
+    # Map min_avg_f (1–5 scale) to TMDb vote_average (0–10 scale)
+    vote_gte = None
+    if min_avg_f is not None:
+        try:
+            vote_gte = float(min_avg_f) * 2.0
+        except (TypeError, ValueError):
+            pass
+
+    items, _, err = discover_tmdb_movies_modern(
+        min_year=era_min, max_year=era_max, page=1,
+        genre_ids=tmdb_genre_ids, vote_average_gte=vote_gte,
+    )
+    if err or not items:
+        # Fallback: retry without genre filter (user may have niche combo)
+        items, _, err = discover_tmdb_movies_modern(
+            min_year=era_min, max_year=era_max, page=1,
+        )
+    if err or not items:
+        return rows[:top_n], 0
+
+    anchor_ids = {int(x) for x in (anchor_ids or [])}
+    seen = {int(r["movie_id"]) for r in rows} | anchor_ids
+    out = list(rows)
+    n_added = 0
+
+    for it in items:
+        if len(out) >= top_n:
+            break
+        tid = int(it["tmdb_id"])
+        row_db = get_movie_by_tmdb_id(tid)
+        if row_db:
+            mid = int(row_db["movie_id"])
+            if mid in seen:
+                continue
+            y = row_db.get("year")
+            title = row_db["title"]
+            g = row_db.get("genres", "") or "Drama"
+        else:
+            full, err2 = fetch_tmdb_movie_for_import(tid)
+            if err2 or not full:
+                continue
+            y = full.get("year")
+            mid = int(
+                insert_tmdb_supplement(
+                    full["tmdb_id"],
+                    full["title"],
+                    full["year"],
+                    full["genres_pipe"],
+                    full["poster_url"],
+                    full["overview"],
+                )
+            )
+            if mid in seen:
+                continue
+            title = full["title"]
+            g = full.get("genres_pipe") or "Drama"
+
+        seen.add(mid)
+        genres = (
+            [x.strip() for x in g.split("|") if x.strip()]
+            if isinstance(g, str)
+            else (g or ["Drama"])
+        ) or ["Drama"]
+        y_out = _safe_year_value(y)
+        out.append(
+            {
+                "movie_id": mid,
+                "title": title,
+                "genres": genres,
+                "year": y_out,
+                "hybrid_score": 0.0,
+                "content_score": 0.0,
+                "collab_score": 0.0,
+                "persona_score": 0.0,
+                "is_cold_start": False,
+                "rec_source": "tmdb_popular",
+            }
+        )
+        n_added += 1
+
+    return out[:top_n], n_added
+
+
 # ──────────────────────────────────────────────
 # PAGE ROUTES  (serve Jinja2 templates)
 # ──────────────────────────────────────────────
@@ -294,13 +623,13 @@ def profile_page():
 @app.route('/preferences')
 @login_required
 def preferences_page():
-    return render_template('preferences.html')
+    return redirect('/discover#discover-preferences')
 
 
 @app.route('/filters')
 @login_required
 def filters_page():
-    return render_template('filters.html')
+    return redirect('/discover#discover-precision')
 
 
 @app.route('/movie/<int:movie_id>')
@@ -431,6 +760,8 @@ def api_preferences():
             (user_id,)
         ).fetchone()
         conn.close()
+        if not row:
+            return jsonify({'error': 'User not found'}), 404
         return jsonify({
             'preferred_genres': json.loads(row['preferred_genres'] or '[]'),
             'age':    row['age'],
@@ -742,6 +1073,15 @@ def api_recommend():
     if isinstance(include_latest, str):
         include_latest = str(include_latest).lower() in ("1", "true", "yes", "on")
 
+    include_regional_indian = data.get("include_regional_indian", True)
+    if isinstance(include_regional_indian, str):
+        include_regional_indian = str(include_regional_indian).lower() in (
+            "1",
+            "true",
+            "yes",
+            "on",
+        )
+
     # Build user profile from DB
     conn = get_db()
     user_row = conn.execute(
@@ -765,9 +1105,10 @@ def api_recommend():
     try:
         min_part = f"{min_avg_f!s}" if min_avg_f is not None else 'na'
         il_flag = 1 if include_latest else 0
+        ir_flag = 1 if include_regional_indian else 0
         cache_key = (
             f"recommend_{user_id}_{movie_id}_{'-'.join(sorted(era_filter))}"
-            f"_{min_part}_{top_n}_v2latest{il_flag}"
+            f"_{min_part}_{top_n}_v9genreaware{il_flag}r{ir_flag}"
         )
         cached = cache.get(cache_key)
         if cached is not None:
@@ -782,6 +1123,21 @@ def api_recommend():
             min_avg_rating=min_avg_f,
         )
 
+        # Fetch anchor movie genres for genre-aware blends
+        anchor_genres = []
+        try:
+            conn_a = get_db()
+            arow = conn_a.execute(
+                "SELECT genres FROM movies WHERE movie_id = ?", (int(movie_id),)
+            ).fetchone()
+            conn_a.close()
+            if arow and arow["genres"]:
+                anchor_genres = [
+                    g.strip() for g in str(arow["genres"]).split("|") if g.strip()
+                ]
+        except Exception:
+            pass
+
         n_latest = 0
         if include_latest:
             results, n_latest = _merge_latest_into_recommendations(
@@ -790,14 +1146,47 @@ def api_recommend():
                 {int(movie_id)},
                 era_filter,
                 min_avg_f,
+                exclude_tmdb_supplements_from_latest=not include_regional_indian,
             )
         else:
             results = (results or [])[:top_n]
+
+        n_regional = 0
+        if include_regional_indian:
+            results, n_regional = _merge_regional_into_recommendations(
+                results,
+                top_n,
+                {int(movie_id)},
+                era_filter,
+                min_avg_f,
+                user_profile=user_profile,
+                anchor_genres=anchor_genres,
+            )
+
+        # On ML-1M, if era chips are "Modern/00s" the hybrid engine returns nothing
+        # (ML-1M ends ~2000).  Fill remaining slots with TMDb popular movies
+        # matched to the user's preferred genres + anchor genres.
+        n_popular = 0
+        if not Config.DATASET_USE_25M and era_filter and len(results) < top_n:
+            results, n_popular = _merge_tmdb_popular_into_recommendations(
+                results,
+                top_n,
+                {int(movie_id)},
+                era_filter,
+                min_avg_f,
+                user_profile=user_profile,
+                anchor_genres=anchor_genres,
+            )
 
         rec_meta = dict(rec_meta or {})
         rec_meta["include_latest"] = bool(include_latest)
         if include_latest:
             rec_meta["included_latest"] = n_latest
+        rec_meta["include_regional_indian"] = bool(include_regional_indian)
+        if include_regional_indian:
+            rec_meta["included_regional"] = n_regional
+        if n_popular:
+            rec_meta["included_tmdb_popular"] = n_popular
 
         for r in results or []:
             for key in (

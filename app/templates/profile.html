@@ -64,15 +64,19 @@
 {% block scripts %}
 <script>
 document.addEventListener('DOMContentLoaded', async () => {
-    const res = await apiFetch('/api/profile');
+    let res;
+    try { res = await apiFetch('/api/profile'); } catch (_) { res = { ok: false }; }
     if (res.ok) {
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
         document.getElementById('profile-name-display').textContent = data.username || 'User';
         document.getElementById('profile-email-display').textContent = data.email || '';
         document.getElementById('profile-form-name').value = data.username || '';
         document.getElementById('profile-form-email').value = data.email || '';
         document.getElementById('profile-form-location').value = data.location || '';
         document.getElementById('profile-form-dob').value = data.dob || '';
+    } else {
+        document.getElementById('profile-name-display').textContent = 'Could not load';
+        showToast('Could not load profile. Please refresh the page.', 'error');
     }
 });
 

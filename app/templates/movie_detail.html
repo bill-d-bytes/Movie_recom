@@ -62,7 +62,7 @@
     </div>
 </div>
 <div class="flex flex-wrap items-center gap-md mt-auto pt-lg border-t border-surface-variant">
-<a id="cm-precision-from-detail" href="/filters" class="inline-flex items-center gap-sm px-xl py-md rounded-lg bg-primary-container text-on-primary-container font-label-bold text-label-bold hover:bg-inverse-primary transition-colors shadow-[0_4px_20px_rgba(229,9,20,0.25)]">
+<a id="cm-precision-from-detail" href="/discover#discover-precision" class="inline-flex items-center gap-sm px-xl py-md rounded-lg bg-primary-container text-on-primary-container font-label-bold text-label-bold hover:bg-inverse-primary transition-colors shadow-[0_4px_20px_rgba(229,9,20,0.25)]">
 <span class="material-symbols-outlined text-[20px]" data-icon="tune">tune</span>
                         Precision match from this film
                     </a>
@@ -92,7 +92,7 @@
             document.getElementById('desktop-poster').src = poster;
             document.getElementById('mobile-poster').src = poster;
             const prec = document.getElementById('cm-precision-from-detail');
-            if (prec) prec.href = '/filters?anchor=' + encodeURIComponent(String(currentMovieId));
+            if (prec) prec.href = '/discover?anchor=' + encodeURIComponent(String(currentMovieId)) + '#discover-precision';
             
             const tags = [];
             if (movie.year) tags.push(movie.year);
@@ -128,7 +128,7 @@
             const j = await recRes.json();
             const recs = (j.movies != null) ? j.movies : j;
             if (!Array.isArray(recs) || recs.length === 0) {
-                recContainer.innerHTML = '<p class="text-on-surface-variant col-span-full">No similar titles passed your filters. Try loosening era or rating on <a href="/filters?anchor=' + encodeURIComponent(String(currentMovieId)) + '" class="text-primary-container font-label-bold hover:underline">Precision match</a>, or pick another anchor.</p>';
+                recContainer.innerHTML = '<p class="text-on-surface-variant col-span-full">No similar titles passed your filters. Try loosening era or rating on <a href="/discover?anchor=' + encodeURIComponent(String(currentMovieId)) + '#discover-precision" class="text-primary-container font-label-bold hover:underline">Precision match</a>, or pick another anchor.</p>';
             } else {
                 recContainer.innerHTML = recs.map(m => buildMovieCard(m)).join('');
             }
@@ -140,15 +140,17 @@
         const tmdbSec = document.getElementById('tmdb-related-section');
         const tmdbBox = document.getElementById('movie-tmdb-related');
         if (tmdbSec && tmdbBox) {
-            const tr = await apiFetch('/api/movies/tmdb-related?movie_id=' + encodeURIComponent(String(currentMovieId)));
-            if (tr.ok) {
-                const tj = await tr.json();
-                const list = tj.results || [];
-                if (list.length > 0) {
-                    tmdbBox.innerHTML = list.map((x) => buildTmdbRelatedCard(x)).join('');
-                    tmdbSec.classList.remove('hidden');
+            try {
+                const tr = await apiFetch('/api/movies/tmdb-related?movie_id=' + encodeURIComponent(String(currentMovieId)));
+                if (tr.ok) {
+                    const tj = await tr.json();
+                    const list = (tj && tj.results) || [];
+                    if (list.length > 0) {
+                        tmdbBox.innerHTML = list.map((x) => buildTmdbRelatedCard(x)).join('');
+                        tmdbSec.classList.remove('hidden');
+                    }
                 }
-            }
+            } catch (_) { /* TMDb section is optional; silent fail is fine */ }
         }
 
         document.getElementById('cm-watchlist-stub')?.addEventListener('click', () => {
